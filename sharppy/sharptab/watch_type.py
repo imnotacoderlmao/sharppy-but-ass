@@ -557,23 +557,53 @@ def possible_watch(prof, use_left=False):
 
     sfc_8km_shear = utils.mag(prof.sfc_8km_shear[0],prof.sfc_8km_shear[1])
 
-    if stp_eff >= 3 and stp_fixed >= 3 and srh1km >= 200 and esrh >= 200 and srw_4_6km >= 15.0 and \
+    #if stp_eff >= 3 and stp_fixed >= 3 and srh1km >= 200 and esrh >= 200 and srw_4_6km >= 15.0 and \
+    #    sfc_8km_shear > 45.0 and prof.sfcpcl.lclhght < 1000. and prof.mlpcl.lclhght < 1200 and lr1 >= 5.0 and \
+    #    prof.mlpcl.bminus > -50 and prof.ebotm == 0:
+    #    watch_types.append("PDS TOR")
+    #elif stp_eff >= 3 and stp_fixed >= 3 and srh1km >= 200 and esrh >= 200 and srw_4_6km >= 15.0 and \
+    #    sfc_8km_shear > 45.0 and prof.sfcpcl.lclhght < 1000. and prof.mlpcl.lclhght < 1200 and lr1 >= 5.0 and \
+    #    prof.mlpcl.bminus > -50 and prof.ebotm == 0:
+    #    watch_types.append("PDS TOR")
+    #elif (stp_eff >= 3 or stp_fixed >= 4) and prof.mlpcl.bminus > -125. and prof.ebotm == 0:
+    #    watch_types.append("TOR")
+    #elif (stp_eff >= 1 or stp_fixed >= 1) and (srw_4_6km >= 15.0 or sfc_8km_shear >= 40) and \
+    #    prof.mlpcl.bminus > -50 and prof.ebotm == 0:
+    #    watch_types.append("TOR")
+    #elif (stp_eff >= 1 or stp_fixed >= 1) and ((prof.low_rh + prof.mid_rh)/2. >= 60) and lr1 >= 5.0 and \
+    #    prof.mlpcl.bminus > -50 and prof.ebotm == 0:
+    #    watch_types.append("TOR")
+    #elif (stp_eff >= 1 or stp_fixed >= 1) and prof.mlpcl.bminus > -150 and prof.ebotm == 0.:
+    #    watch_types.append("MRGL TOR")
+    #elif (stp_eff >= 0.5 and esrh >= 150) or (stp_fixed >= 0.5 and srh1km >= 150) and \
+    #    prof.mlpcl.bminus > -50 and prof.ebotm == 0.:
+    #    watch_types.append("MRGL TOR")
+
+    if stp_eff >= 50 and stp_fixed >= 50 and srh1km >= 850 and esrh >= 850 and srw_4_6km >= 65.0 and \
+        sfc_8km_shear > 85.0 and prof.sfcpcl.lclhght < 1000. and prof.mlpcl.lclhght < 1200 and lr1 >= 7.0 and \
+        prof.mlpcl.bminus > -50 and prof.ebotm == 0:
+        watch_types.append("are you\n in jupiter.")
+    elif stp_eff >= 10 and stp_fixed >= 10 and srh1km >= 500 and esrh >= 500 and srw_4_6km >= 45.0 and \
+        sfc_8km_shear > 65.0 and prof.sfcpcl.lclhght < 1000. and prof.mlpcl.lclhght < 1200 and lr1 >= 7.0 and \
+        prof.mlpcl.bminus > -50 and prof.ebotm == 0:
+        watch_types.append("WHAT THE FUCK")
+    elif stp_eff >= 3 and stp_fixed >= 3 and srh1km >= 200 and esrh >= 200 and srw_4_6km >= 15.0 and \
         sfc_8km_shear > 45.0 and prof.sfcpcl.lclhght < 1000. and prof.mlpcl.lclhght < 1200 and lr1 >= 5.0 and \
         prof.mlpcl.bminus > -50 and prof.ebotm == 0:
-        watch_types.append("PDS TOR")
+        watch_types.append("BIG WEDGE\n OMGGGG")
     elif (stp_eff >= 3 or stp_fixed >= 4) and prof.mlpcl.bminus > -125. and prof.ebotm == 0:
-        watch_types.append("TOR")
+        watch_types.append("OMG TOR")
     elif (stp_eff >= 1 or stp_fixed >= 1) and (srw_4_6km >= 15.0 or sfc_8km_shear >= 40) and \
         prof.mlpcl.bminus > -50 and prof.ebotm == 0:
-        watch_types.append("TOR")
+        watch_types.append("OMG TOR")
     elif (stp_eff >= 1 or stp_fixed >= 1) and ((prof.low_rh + prof.mid_rh)/2. >= 60) and lr1 >= 5.0 and \
         prof.mlpcl.bminus > -50 and prof.ebotm == 0:
-        watch_types.append("TOR")
+        watch_types.append("OMG TOR")
     elif (stp_eff >= 1 or stp_fixed >= 1) and prof.mlpcl.bminus > -150 and prof.ebotm == 0.:
-        watch_types.append("MRGL TOR")
+        watch_types.append("TOR???")
     elif (stp_eff >= 0.5 and esrh >= 150) or (stp_fixed >= 0.5 and srh1km >= 150) and \
         prof.mlpcl.bminus > -50 and prof.ebotm == 0.:
-        watch_types.append("MRGL TOR")
+        watch_types.append("TOR???")
 
     #SVR LOGIC
     if use_left:
@@ -582,13 +612,13 @@ def possible_watch(prof, use_left=False):
         scp = prof.right_scp
 
     if (stp_fixed >= 1.0 or scp >= 4.0 or stp_eff >= 1.0) and prof.mupcl.bminus >= -50:
-        watch_types.append("SVR")
+        watch_types.append("STORMS")
     elif scp >= 2.0 and (prof.ship >= 1.0 or prof.dcape >= 750) and prof.mupcl.bminus >= -50:
-        watch_types.append("SVR")
+        watch_types.append("STORMS")
     elif prof.sig_severe >= 30000 and prof.mmp >= 0.6 and prof.mupcl.bminus >= -50:
-        watch_types.append("SVR")
+        watch_types.append("STORMS")
     elif prof.mupcl.bminus >= -75.0 and (prof.wndg >= 0.5 or prof.ship >= 0.5 or scp >= 0.5):
-        watch_types.append("MRGL SVR")
+        watch_types.append("WEAKASS STORMS")
     
     # Flash Flood Watch PWV is larger than normal and cloud layer mean wind speeds are slow
     # This is trying to capture the ingredients of moisture and advection speed, but cannot
@@ -599,7 +629,7 @@ def possible_watch(prof, use_left=False):
     pwat = prof.pwat
     upshear = utils.comp2vec(prof.upshear_downshear[0],prof.upshear_downshear[1])
     if pw_climo_flag >= 2 and upshear[1] < 25:
-        watch_types.append("FLASH FLOOD")
+        watch_types.append("HUGE WATER")
     #elif pwat > 1.3 and upshear[1] < 25:
     #    watch_types.append("FLASH FLOOD")
     
@@ -607,7 +637,7 @@ def possible_watch(prof, use_left=False):
     # Still needs to be tied into the 
     sfc_wspd = utils.KTS2MPH(prof.wspd[prof.get_sfc()])
     if sfc_wspd > 35. and prof.tmpc[prof.get_sfc()] <= 0 and "Snow" in prof.precip_type:
-        watch_types.append("BLIZZARD")
+        watch_types.append("SNOWY WIND")
     
     # Wind Chill (if wind chill gets below -20 F)
     # TODO: Be reinstated in future releases if the logic becomes a little more solid.
@@ -624,7 +654,7 @@ def possible_watch(prof, use_left=False):
     rh = thermo.relh(prof.pres[prof.get_sfc()], temp, prof.dwpc[prof.get_sfc()])
     hi = heat_index(temp, rh)
     if hi > 105.:
-        watch_types.append("EXCESSIVE HEAT")
+        watch_types.append("THE SUN")
     
     # Freeze (checks to see if wetbulb is below freezing and temperature isn't and wind speeds are low)
     # Still in testing.  To be reinstated in future releases.

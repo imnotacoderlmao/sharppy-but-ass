@@ -92,6 +92,7 @@ class plotWatch(backgroundWatch):
         self.bg_color = QtGui.QColor('#000000')
         self.fg_color = QtGui.QColor('#ffffff')
 
+        self.wtf_color      = QtGui.QColor('#ffffff')
         self.pdstor_color   = QtGui.QColor('#ff00ff')
         self.tor_color      = QtGui.QColor('#ff0000')
         self.svr_color      = QtGui.QColor('#ffff00')
@@ -102,18 +103,36 @@ class plotWatch(backgroundWatch):
         self.heat_color     = QtGui.QColor('#c85a17')
         self.none_color     = QtGui.QColor('#ffcc33')
 
+        #self.color_map = {
+        #    'PDS TOR':        'pdstor_color',
+        #    'TOR':            'tor_color',
+        #    'MRGL TOR':       'tor_color',
+        #    'SVR':            'svr_color',
+        #    'MRGL SVR':       'mrglsvr_color',
+        #    'FLASH FLOOD':    'flood_color',
+        #    'BLIZZARD':       'blizzard_color',
+        #    'WIND CHILL':     'blizzard_color',
+        #    'FREEZE':         'blizzard_color',
+        #    'FIRE WEATHER':   'fire_color',
+        #    'EXCESSIVE HEAT': 'heat_color',
+        #    'NONE':           'none_color',
+        #}
+
+        
         self.color_map = {
-            'PDS TOR':        'pdstor_color',
-            'TOR':            'tor_color',
-            'MRGL TOR':       'tor_color',
-            'SVR':            'svr_color',
-            'MRGL SVR':       'mrglsvr_color',
-            'FLASH FLOOD':    'flood_color',
-            'BLIZZARD':       'blizzard_color',
-            'WIND CHILL':     'blizzard_color',
-            'FREEZE':         'blizzard_color',
-            'FIRE WEATHER':   'fire_color',
-            'EXCESSIVE HEAT': 'heat_color',
+            'are you\n in jupiter.':        'wtf_color',
+            'WHAT THE FUCK':        'pdstor_color',
+            'BIG WEDGE\n OMGGGG':        'pdstor_color',
+            'OMG TOR':            'tor_color',
+            'TOR???':       'tor_color',
+            'STORMS':            'svr_color',
+            'WEAKASS STORMS':       'mrglsvr_color',
+            'HUGE WATER':    'flood_color',
+            'SNOWY WIND':       'blizzard_color',
+            'ABSOLUTE ZERO':     'blizzard_color',
+            'ANTARTICA':         'blizzard_color',
+            'COMBUSTION':   'fire_color',
+            'THE SUN': 'heat_color',
             'NONE':           'none_color',
         }
 

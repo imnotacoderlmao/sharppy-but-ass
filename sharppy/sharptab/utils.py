@@ -32,6 +32,26 @@ def INT2STR(val):
     except:
         return str(val)
 
+def INT2STR_NOROUND(val):
+    '''
+    Convert a value (float or int) into an integer string
+    by rounding to the nearest integer and returning the 
+    string. Used to handle case where value is nan or 
+    masked.
+    
+    Parameters
+    ----------
+    val: float or int
+    
+    Returns
+    -------
+    Val rounded to the nearest int and converted to a string.
+    
+    '''
+    if np.isnan(val):
+        return '--'
+    else:
+        return str(val)
 
 def FLOAT2STR(val, precision):
     '''

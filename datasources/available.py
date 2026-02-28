@@ -328,52 +328,52 @@ spc_base_url = "http://www.spc.noaa.gov/exper/soundings/"
 spc_text = ""
 spc_time = None
 
-def _download_spc():
-    global spc_time, spc_text
-    now = datetime.utcnow()
-    if spc_time is None or spc_time < now - cache_len:
-        url_obj = urlopen(spc_base_url, cafile=certifi.where())
-        spc_text = url_obj.read().decode('utf-8')
-
-        spc_time = now
-
-    return spc_text
-
-def _available_spc(dt=None):
-    '''
-        _available_spc()
-
-        Gets all of the available sounding times from the SPC site.
-
-        Returns
-        -------
-        matches : array
-            Array of datetime objects that represents all the available times
-            of sounding data on the SPC site.
-    '''
-    text = _download_spc()
-    matches = sorted(list(set(re.findall("([\d]{8})_OBS", text))))
-    return [ datetime.strptime(m, '%y%m%d%H') for m in matches ]
-
-def _availableat_spc(dt):
-    '''
-        _availableat_spc(dt)
-
-        Get all the station locations where data was available for a certain dt object.
-
-        Parameters
-        ----------
-        dt : datetime object
-
-        Returns
-        -------
-        matches : array of strings
-            An array that contains all of the three letter station identfiers.
-    '''
-    recent_url = "%s%s/" % (spc_base_url, dt.strftime('%y%m%d%H_OBS'))
-    text = urlopen(recent_url, cafile=certifi.where()).read().decode('utf-8')
-    matches = re.findall("show_soundings\(\"([\w]{3}|[\d]{5})\"\)", text)
-    return matches
+#def _download_spc():
+#    global spc_time, spc_text
+#    now = datetime.utcnow()
+#    if spc_time is None or spc_time < now - cache_len:
+#        url_obj = urlopen(spc_base_url, cafile=certifi.where())
+#        spc_text = url_obj.read().decode('utf-8')
+#
+#        spc_time = now
+#
+#    return spc_text
+#
+#def _available_spc(dt=None):
+#    '''
+#        _available_spc()
+#
+#        Gets all of the available sounding times from the SPC site.
+#
+#        Returns
+#        -------
+#        matches : array
+#            Array of datetime objects that represents all the available times
+#            of sounding data on the SPC site.
+#    '''
+#    text = _download_spc()
+#    matches = sorted(list(set(re.findall("([\d]{8})_OBS", text))))
+#    return [ datetime.strptime(m, '%y%m%d%H') for m in matches ]
+#
+#def _availableat_spc(dt):
+#    '''
+#        _availableat_spc(dt)
+#
+#        Get all the station locations where data was available for a certain dt object.
+#
+#        Parameters
+#        ----------
+#        dt : datetime object
+#
+#        Returns
+#        -------
+#        matches : array of strings
+#            An array that contains all of the three letter station identfiers.
+#    '''
+#    recent_url = "%s%s/" % (spc_base_url, dt.strftime('%y%m%d%H_OBS'))
+#    text = urlopen(recent_url, cafile=certifi.where()).read().decode('utf-8')
+#    matches = re.findall("show_soundings\(\"([\w]{3}|[\d]{5})\"\)", text)
+#    return matches
 
 ### IEM BUFKIT ARCHIVE CODE
 iem_base_url = "http://mtarchive.geol.iastate.edu/%Y/%m/%d/bufkit/%H/"
@@ -623,7 +623,7 @@ def _available_nssl(ens=False):
 available = {
     'psu':{},
     'iem':{},
-    'spc':{'observed': lambda dt=None: _available_spc(dt=dt)},
+    #'spc':{'observed': lambda dt=None: _available_spc(dt=dt)},
 #    'ou_pecan': {'pecan ensemble': lambda dt=None: _available_oupecan(dt=dt) },
 #    'ncar_ens': {'ncar ensemble': lambda dt=None: _available_ncarens(dt=dt) },
     'sharp': {'ncar ensemble': lambda dt=None: _available_ncarens(dt=dt), 'observed': lambda dt=None: _available_sharp(dt=dt), 'goes': lambda dt=None: _available_goes(dt=dt)},
@@ -642,7 +642,7 @@ available = {
 availableat = {
     'psu':{},
     'iem':{},
-    'spc':{'observed':_availableat_spc},
+    #'spc':{'observed':_availableat_spc},
     'ou_pecan': {'pecan ensemble': lambda dt: _availableat_oupecan(dt)},
     'sharp': {'ncar ensemble': lambda dt: _availableat_ncarens(dt) , 'observed':_availableat_sharp, 'goes':_availableat_goes},
 }

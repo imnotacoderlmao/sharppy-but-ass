@@ -85,12 +85,15 @@ class Draggable(object):
         drag_x: x coordinate in pixels of the drag point.
         drag_y: y coordinate in pixels of the drag point.
         """
+        # stole this from https://github.com/amillh/SHARPpy/commit/4481206c72ff705e00a96e27c92d4633f9267f99
+        _x_obj_mask = np.ma.getmaskarray(self._x_obj)
+        _y_obj_mask = np.ma.getmaskarray(self._y_obj)
         lb_idx, ub_idx = max(self._drag_idx - 1, 0), min(self._drag_idx + 1, self._x_obj.shape[0] - 1)
 
-        while lb_idx >= 0 and (self._x_obj.mask[lb_idx] or self._y_obj.mask[lb_idx]):
+        while lb_idx >= 0 and (_x_obj_mask[lb_idx] or _y_obj_mask[lb_idx]):
             lb_idx -= 1
 
-        while ub_idx < self._x_obj.shape[0] and (self._x_obj.mask[ub_idx] or self._y_obj.mask[ub_idx]):
+        while ub_idx < self._x_obj.shape[0] and (_x_obj_mask[ub_idx] or _y_obj_mask[ub_idx]):
             ub_idx += 1
 
         if lb_idx != -1:

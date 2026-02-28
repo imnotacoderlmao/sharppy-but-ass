@@ -150,6 +150,7 @@ class plotSpeed(backgroundSpeed):
 
         ## give different colors for different height values.
         ## these are consistent with the hodograph colors.
+        self.low__low_level_color = QtGui.QColor("#FF00FF")
         self.low_level_color = QtGui.QColor("#FF0000")
         self.mid_level_color = QtGui.QColor("#00FF00")
         self.upper_level_color = QtGui.QColor("#FFFF00")
@@ -177,7 +178,8 @@ class plotSpeed(backgroundSpeed):
             self.smax = 80.; self.smin = 0. # m/s
             self.delta = 10.
            
-        self.low_level_color = QtGui.QColor(prefs['0_3_color'])
+        self.low_low_level_color = QtGui.QColor(prefs['0_1_color'])
+        self.low_level_color = QtGui.QColor(prefs['1_3_color'])
         self.mid_level_color = QtGui.QColor(prefs['3_6_color'])
         self.upper_level_color = QtGui.QColor(prefs['6_9_color'])
         self.trop_level_color = QtGui.QColor(prefs['9_12_color'])
@@ -271,7 +273,9 @@ class plotSpeed(backgroundSpeed):
             x1 = self.speed_to_pix(spd1)
             y1 = self.pres_to_pix(p1)
             ## now color code the different heights
-            if hgt1 < 3000:
+            if hgt1 < 1000:
+                pen = QtGui.QPen(self.low_low_level_color, 2)
+            elif hgt1 < 3000:
                 pen = QtGui.QPen(self.low_level_color, 2)
             elif hgt1 < 6000:
                 pen = QtGui.QPen(self.mid_level_color, 2)

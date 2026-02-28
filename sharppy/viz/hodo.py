@@ -338,6 +338,7 @@ class plotHodo(backgroundHodo):
         self.all_observed = False
 
         self.colors = [
+            QtGui.QColor("#FF00FF"),
             QtGui.QColor("#FF0000"),
             QtGui.QColor("#00FF00"),
             QtGui.QColor("#FFFF00"),
@@ -345,6 +346,7 @@ class plotHodo(backgroundHodo):
         ]
 
         self.ens_colors = [
+            QtGui.QColor("#880088"),
             QtGui.QColor("#880000"),
             QtGui.QColor("#008800"),
             QtGui.QColor("#888800"),
@@ -584,7 +586,8 @@ class plotHodo(backgroundHodo):
         self.crit_color = QtGui.QColor(kwargs['hodo_crit_color'])
 
         self.colors = [
-            QtGui.QColor(kwargs['0_3_color']),
+            QtGui.QColor(kwargs['0_1_color']),
+            QtGui.QColor(kwargs['1_3_color']),
             QtGui.QColor(kwargs['3_6_color']),
             QtGui.QColor(kwargs['6_9_color']),
             QtGui.QColor(kwargs['9_12_color']),
@@ -595,14 +598,14 @@ class plotHodo(backgroundHodo):
         if self.wind_units == 'm/s':
             self.ring_increment = 5
             self.hodomag = 80.
-            self.min_zoom = 20.
-            self.max_zoom = 100.
+            self.min_zoom = 10.
+            self.max_zoom = 200.
             conv = tab.utils.KTS2MS
         else:
             self.ring_increment = 10
             self.hodomag = 160.
-            self.min_zoom = 40.
-            self.max_zoom = 200.
+            self.min_zoom =20.
+            self.max_zoom = 400.
             conv = lambda s: s
 
         self.scale = (self.brx - self.tlx) / self.hodomag
@@ -1281,7 +1284,7 @@ class plotHodo(backgroundHodo):
                     critical_angle = self.prof.left_critical_angle
                 else:
                     critical_angle = self.prof.right_critical_angle
-                qp.drawText(rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignLeft, 'Critical Angle = ' + tab.utils.INT2STR(critical_angle) + u"\u00B0")
+                qp.drawText(rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignLeft, 'Critical Angle = ' + tab.utils.INT2STR_NOROUND(critical_angle) + u"\u00B0")
 
     def draw_hodo(self, qp, prof, colors, width=2):
         '''
@@ -1309,7 +1312,7 @@ class plotHodo(backgroundHodo):
         ## define the colors for the different hodograph heights
         penwidth = width
 
-        seg_bnds = np.maximum([0., 3000., 6000., 9000., 12000.], z.min())
+        seg_bnds = np.maximum([0., 1000., 3000., 6000., 9000., 12000.], z.min())
         seg_x = [ tab.interp.generic_interp_hght(bnd, z, xx) for bnd in seg_bnds if bnd <= z.max() ]
         seg_y = [ tab.interp.generic_interp_hght(bnd, z, yy) for bnd in seg_bnds if bnd <= z.max() ]
 
@@ -1372,7 +1375,7 @@ class plotHodo(backgroundHodo):
         qp.setPen(pen)
         qp.setBrush(Qt.NoBrush)
 
-        seg_bnds = [0., 3000., 6000., 9000., 12000.]
+        seg_bnds = [0., 1000., 3000., 6000., 9000., 12000.]
         seg_x = [ tab.interp.generic_interp_hght(bnd, z, xx) for bnd in seg_bnds if bnd <= z.max() ]
         seg_y = [ tab.interp.generic_interp_hght(bnd, z, yy) for bnd in seg_bnds if bnd <= z.max() ]
 
