@@ -448,6 +448,21 @@ class plotHodo(backgroundHodo):
         reset_vec.triggered.connect(lambda: self.reset_vector.emit())
         self.popupmenu.addAction(reset_vec)
 
+        self.popupmenu.addSeparator()
+
+        rightmove = QAction(self)
+        rightmove.setText("Right Mover SM")
+        rightmove.setCheckable(True)
+        rightmove.setChecked(True)
+        rightmove.triggered.connect(lambda: self.toggle_vector.emit('right'))
+        self.popupmenu.addAction(leftmove)
+
+        leftmove = QAction(self)
+        leftmove.setText("Left Mover SM")
+        leftmove.setCheckable(True)
+        leftmove.triggered.connect(lambda: self.toggle_vector.emit('left'))
+        self.popupmenu.addAction(leftmove)
+
     def addProfileCollection(self, prof_coll):
         self.prof_collections.append(prof_coll)
 
@@ -630,6 +645,12 @@ class plotHodo(backgroundHodo):
         self.plotData()
         self.update()
         self.parentWidget().setFocus()
+    
+    # i thought setdeviant was gonna also change the calculations and stuff, im gonna use togglevector instead man i swear
+    # def setRightMover(self):
+    #     self.setDeviant('right')
+    # def setLeftMover(self):
+    #     self.setDeviant('left')
 
     def wheelEvent(self, e):
         '''
