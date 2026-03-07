@@ -196,7 +196,8 @@ class plotSlinky(backgroundSlinky):
         self.bg_color = QtGui.QColor(prefs['bg_color'])
         self.fg_color = QtGui.QColor(prefs['fg_color'])
 
-        self.low_level_color = QtGui.QColor(prefs['0_3_color'])
+        self.low_low_level_color = QtGui.QColor(prefs['0_1_color'])
+        self.low_level_color = QtGui.QColor(prefs['1_3_color'])
         self.mid_level_color = QtGui.QColor(prefs['3_6_color'])
         self.upper_level_color = QtGui.QColor(prefs['6_9_color'])
         self.trop_level_color = QtGui.QColor(prefs['9_12_color'])
@@ -354,7 +355,9 @@ class plotSlinky(backgroundSlinky):
 
             ## set the various colors
             if has_el and z == self.slinky_traj[-1][2]:
-                pen = QtGui.QPen(QtGui.QColor("#FF00FF"), 1, QtCore.Qt.SolidLine)
+                pen = QtGui.QPen(QtGui.QColor("#0000FF"), 1, QtCore.Qt.SolidLine)
+            elif z < 1000:
+                pen = QtGui.QPen(self.low_low_level_color, 1, QtCore.Qt.SolidLine)
             elif z < 3000:
                 pen = QtGui.QPen(self.low_level_color, 1, QtCore.Qt.SolidLine)
             elif z < 6000:
