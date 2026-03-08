@@ -26,6 +26,74 @@ def drawHalfBarb(path, shemis=False):
     path.moveTo(pos.x() - 4, pos.y())
 
 def drawBarb(qp, origin_x, origin_y, wdir, wspd, color='#FFFFFF', shemis=False):
+    # Custom colors by speed:
+    if wspd <= 9999:
+        color = '#FF0000'
+    if wspd <= 60:
+        color = '#FF4000'
+    if wspd <= 55:
+        color = '#FF8000'
+    if wspd <= 50:
+        color = '#FFBF00'
+    if wspd <= 45:
+        color = '#FFFF00'
+    if wspd <= 40:
+        color = '#BFFF00'
+    if wspd <= 35:
+        color = '#80FF00'
+    if wspd <= 30:
+        color = '#40FF00'
+    if wspd <= 25:
+        color = '#00FF00'
+    if wspd <= 20:
+        color = '#00FF40'
+    if wspd <= 15:
+        color = '#00FF80'
+    if wspd <= 10:
+        color = '#00FFBF'
+    if wspd <= 5:
+        color = '#00FFFF'
+    if wspd < 3:
+        color = '#FFFFFF'
+
+    pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine)
+    pen.setWidthF(1.)
+    qp.setPen(pen)
+    qp.setBrush(QtCore.Qt.NoBrush)
+
+    try:
+        wspd = int(round(wspd / 5.) * 5) # Round to the nearest 5
+    except ValueError:
+        return
+
+    qp.translate(origin_x, origin_y)
+
+    if wspd > 0:
+        qp.rotate(wdir - 90)
+
+        path = QtGui.QPainterPath()
+        path.moveTo(0, 0)
+        path.lineTo(25, 0)
+
+        while wspd >= 50:
+            drawFlag(path, shemis=shemis)
+            wspd -= 50
+
+        while wspd >= 10:
+            drawFullBarb(path, shemis=shemis)
+            wspd -= 10
+
+        while wspd >= 5:
+            drawHalfBarb(path, shemis=shemis)
+            wspd -= 5
+
+        qp.drawPath(path)
+        qp.rotate(90 - wdir)
+    else:
+        qp.drawEllipse(QtCore.QPoint(0, 0), 3, 3)
+    qp.translate(-origin_x, -origin_y)
+
+def drawBarb_old(qp, origin_x, origin_y, wdir, wspd, color='#FFFFFF', shemis=False):
     pen = QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.SolidLine)
     pen.setWidthF(1.)
     qp.setPen(pen)

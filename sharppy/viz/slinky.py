@@ -159,6 +159,7 @@ class plotSlinky(backgroundSlinky):
         self.prof = None
         self.pcl = None
 
+        self.low_low_level_color = QtGui.QColor("#FF00FF")
         self.low_level_color = QtGui.QColor(RED)
         self.mid_level_color = QtGui.QColor("#00FF00")
         self.upper_level_color = QtGui.QColor(YELLOW)

@@ -455,7 +455,7 @@ class plotHodo(backgroundHodo):
         rightmove.setCheckable(True)
         rightmove.setChecked(True)
         rightmove.triggered.connect(lambda: self.toggle_vector.emit('right'))
-        self.popupmenu.addAction(leftmove)
+        self.popupmenu.addAction(rightmove)
 
         leftmove = QAction(self)
         leftmove.setText("Left Mover SM")
@@ -1165,8 +1165,8 @@ class plotHodo(backgroundHodo):
 
         up_stuff = tab.utils.INT2STR(np.float64(self.upshear[0])) + '/' + tab.utils.INT2STR(up_spd)
         dn_stuff = tab.utils.INT2STR(np.float64(self.downshear[0])) + '/' + tab.utils.INT2STR(dn_spd)
-        qp.drawText(up_rect, QtCore.Qt.AlignCenter, "UP=" + up_stuff)
-        qp.drawText(dn_rect, QtCore.Qt.AlignCenter, "DN=" + dn_stuff)
+        qp.drawText(up_rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, "UP=" + up_stuff)
+        qp.drawText(dn_rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, "DN=" + dn_stuff)
 
 
     def drawSMV(self, qp):
@@ -1258,8 +1258,8 @@ class plotHodo(backgroundHodo):
 
         rm_stuff = tab.utils.INT2STR(np.float64(self.bunkers_right_vec[0])) + '/' + tab.utils.INT2STR(rm_spd)
         lm_stuff = tab.utils.INT2STR(np.float64(self.bunkers_left_vec[0])) + '/' + tab.utils.INT2STR(lm_spd)
-        qp.drawText(rm_rect, QtCore.Qt.AlignCenter, rm_stuff + " RM")
-        qp.drawText(lm_rect, QtCore.Qt.AlignCenter, lm_stuff + " LM")
+        qp.drawText(rm_rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, rm_stuff + " RM")
+        qp.drawText(lm_rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, lm_stuff + " LM")
 
     def drawCriticalAngle(self, qp):
         '''
