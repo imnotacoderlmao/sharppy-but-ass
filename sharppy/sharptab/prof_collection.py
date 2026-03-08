@@ -7,6 +7,142 @@ from sutils.frozenutils import Process, Queue
 import platform
 import numpy as np
 
+def _ask_interp_options():
+    """
+    Pop up a small Tkinter window that asks the user how they want to
+    interpolate the profile.
+
+    Returns a dict:
+        {
+            'mode':  'fill_missing' | 'pressure_grid',
+            'dp':    float  (negative step, e.g. -25),   # pressure_grid only
+            'pbot':  float | None,                        # pressure_grid only
+            'ptop':  float | None,                        # pressure_grid only
+        }
+    this returns None if the user cancelled.
+    """
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+
+    result = {}
+
+    root = tk.Tk()
+    root.title("Interpolation Options")
+    root.resizable(False, False)
+
+    body = tk.Frame(root, padx=18, pady=12, bg="#f4f7fb")
+    body.pack(fill=tk.BOTH, expand=True)
+
+    mode_var = tk.StringVar(value="fill_missing")
+
+    def _toggle(*_):
+        state = "normal" if mode_var.get() == "pressure_grid" else "disabled"
+        for w in grid_widgets:
+            w.configure(state=state)
+
+    tk.Label(body, text="Interpolation mode:", bg="#f4f7fb", anchor="w").grid(
+        row=0, column=0, columnspan=2, sticky="w", pady=(0, 4)
+    )
+    rb1 = tk.Radiobutton(
+        body,
+        text="Fill missing values only  (linear interp between valid points)",
+        variable=mode_var,
+        value="fill_missing",
+        bg="#f4f7fb",
+        command=_toggle,
+    )
+    rb1.grid(row=1, column=0, columnspan=2, sticky="w")
+
+    rb2 = tk.Radiobutton(
+        body,
+        text="Interpolate to regular pressure grid",
+        variable=mode_var,
+        value="pressure_grid",
+        bg="#f4f7fb",
+        command=_toggle,
+    )
+    rb2.grid(row=2, column=0, columnspan=2, sticky="w", pady=(2, 8))
+
+    # Pressure-grid options 
+    sep = ttk.Separator(body, orient="horizontal")
+    sep.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+
+    tk.Label(body, text="Pressure step (hPa, negative):", bg="#f4f7fb").grid(
+        row=4, column=0, sticky="w"
+    )
+    dp_var = tk.StringVar(value="-25")
+    dp_entry = tk.Entry(body, textvariable=dp_var, width=10)
+    dp_entry.grid(row=4, column=1, sticky="w", padx=(6, 0))
+
+    tk.Label(body, text="Bottom pressure (hPa, blank = sfc):", bg="#f4f7fb").grid(
+        row=5, column=0, sticky="w", pady=(4, 0)
+    )
+    pbot_var = tk.StringVar(value="")
+    pbot_entry = tk.Entry(body, textvariable=pbot_var, width=10)
+    pbot_entry.grid(row=5, column=1, sticky="w", padx=(6, 0))
+
+    tk.Label(body, text="Top pressure    (hPa, blank = top):", bg="#f4f7fb").grid(
+        row=6, column=0, sticky="w", pady=(4, 0)
+    )
+    ptop_var = tk.StringVar(value="")
+    ptop_entry = tk.Entry(body, textvariable=ptop_var, width=10)
+    ptop_entry.grid(row=6, column=1, sticky="w", padx=(6, 0))
+
+    grid_widgets = [dp_entry, pbot_entry, ptop_entry]
+    _toggle()  # set initial disabled state
+
+    # Buttons
+    btn_frame = tk.Frame(root, bg="#f4f7fb", pady=8)
+    btn_frame.pack(fill=tk.X)
+
+    def _ok():
+        mode = mode_var.get()
+        result["mode"] = mode
+        if mode == "pressure_grid":
+            try:
+                dp = float(dp_var.get())
+                if dp >= 0:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror(
+                    "Invalid input", "Pressure step must be a negative number."
+                )
+                return
+            result["dp"] = dp
+            result["pbot"] = float(pbot_var.get()) if pbot_var.get().strip() else None
+            result["ptop"] = float(ptop_var.get()) if ptop_var.get().strip() else None
+        root.destroy()
+
+    def _cancel():
+        result.clear()
+        root.destroy()
+
+    ok_btn = tk.Button(
+        btn_frame,
+        text="  OK  ",
+        command=_ok,
+        bg="#1c6ea4",
+        fg="white",
+        relief="flat",
+        padx=8,
+        pady=4,
+    )
+    ok_btn.pack(side=tk.RIGHT, padx=(0, 12))
+
+    cancel_btn = tk.Button(
+        btn_frame,
+        text="Cancel",
+        command=_cancel,
+        bg="#d0d0d0",
+        relief="flat",
+        padx=8,
+        pady=4,
+    )
+    cancel_btn.pack(side=tk.RIGHT, padx=(0, 4))
+
+    root.mainloop()
+    return result if result else None
+
 def doCopy(target_type, prof, idx, pipe):
     pipe.put((target_type.copy(prof), idx))
     
@@ -343,45 +479,120 @@ class ProfCollection(object):
     def resetStormMotion(self):
         self._profs[self._highlight][self._prof_idx].reset_srm()
 
-    def interp(self, dp=-25):
+    def interp(self, dp=-25, mode=None, pbot=None, ptop=None, ask=True):
         """
-        Interpolate the profile object to a specific pressure level spacing.
+        Interpolate / gap-fill the current profile.
+
+        Parameters
+        ----------
+        dp : float, optional
+            Pressure step (negative) used when mode='pressure_grid'.
+            Default -25 hPa.
+        mode : str or None
+            'fill_missing'  - fill -9999/-9990 gaps by linear interpolation
+                              between the nearest valid neighbours.
+            'pressure_grid' - re-sample the profile onto a regular pressure
+                              grid with spacing *dp* between *pbot* and *ptop*.
+            None (default)  - show a Tkinter dialog to ask the user (when
+                              ask=True) or fall back to 'pressure_grid'
+                              behaviour for backward compatibility.
+        pbot : float or None
+            Bottom of the new pressure grid (hPa). None → use sfc.
+        ptop : float or None
+            Top of the new pressure grid (hPa). None → use top of sounding.
+        ask : bool
+            If True and *mode* is None, open the Tkinter dialog.
         """
 
         if self.isEnsemble():
-            raise ValueError("Cannot interpolate the ensemble profiles.")
+            raise ValueError("Cannot interpolate ensemble profiles.")
+
+        if mode is None:
+            if ask:
+                opts = _ask_interp_options()
+                if opts is None:
+                    return  # user cancelled
+                mode = opts['mode']
+                if mode == 'pressure_grid':
+                    dp   = opts.get('dp',   dp)
+                    pbot = opts.get('pbot', pbot)
+                    ptop = opts.get('ptop', ptop)
+            else:
+                mode = 'pressure_grid'  # legacy default
 
         prof = self._profs[self._highlight][self._prof_idx]
 
-        # Save original, if one hasn't already been saved
         if self._prof_idx not in self._orig_profs:
             self._orig_profs[self._prof_idx] = prof
 
         cls = type(prof)
-        # Copy the tmpc, dwpc, etc. profiles to be inteprolated
-        keys = ['tmpc', 'dwpc', 'hght', 'wspd', 'wdir', 'omeg']
-        
-        prof_vars = {'pres': np.arange(prof.pres[prof.sfc], prof.pres[prof.top], dp)}
-        prof_vars['tmpc'] = interp.temp(prof, prof_vars['pres'])
-        prof_vars['dwpc'] = interp.dwpt(prof, prof_vars['pres'])
-        prof_vars['hght'] = interp.hght(prof, prof_vars['pres'])
-        if prof.omeg.all() is not np.ma.masked:
-            prof_vars['omeg'] = interp.omeg(prof, prof_vars['pres'])
-        else:
-            prof_vars['omeg'] = np.ma.masked_array(prof_vars['pres'], mask=np.ones(len(prof_vars['pres']), dtype=int))
-        u, v = interp.components(prof, prof_vars['pres'])
-        prof_vars['u'] = u
-        prof_vars['v'] = v
 
-        interp_prof = cls.copy(prof, **prof_vars)
+        if mode == 'fill_missing':
+            pres = prof.pres  # keep original pressure levels unchanged
+
+            prof_vars = {'pres': pres}
+            prof_vars['tmpc'] = interp.temp(prof, pres)
+            prof_vars['dwpc'] = interp.dwpt(prof, pres)
+            prof_vars['hght'] = interp.hght(prof, pres)
+
+            if prof.omeg.all() is not np.ma.masked:
+                prof_vars['omeg'] = interp.omeg(prof, pres)
+            else:
+                prof_vars['omeg'] = np.ma.masked_array(
+                    pres, mask=np.ones(len(pres), dtype=int)
+                )
+
+            u, v = interp.components(prof, pres)
+            prof_vars['u'] = u
+            prof_vars['v'] = v
+
+            interp_prof = cls.copy(prof, **prof_vars)
+
+        elif mode == 'pressure_grid':
+            p_sfc = prof.pres[prof.sfc]
+            p_top = prof.pres[prof.top]
+
+            if pbot is not None:
+                p_sfc = float(pbot)
+            if ptop is not None:
+                p_top = float(ptop)
+
+            dp = abs(float(dp))
+
+            # Use linspace instead of arange to avoid float rounding errors that can silently drop the last pressure level.
+            n_levels = int(round((p_sfc - p_top) / dp)) + 1
+            new_pres = np.linspace(p_sfc, p_top, n_levels)
+
+            prof_vars = {'pres': new_pres}
+            prof_vars['tmpc'] = interp.temp(prof, new_pres)
+            prof_vars['dwpc'] = interp.dwpt(prof, new_pres)
+            prof_vars['hght'] = interp.hght(prof, new_pres)
+
+            if prof.omeg.all() is not np.ma.masked:
+                prof_vars['omeg'] = interp.omeg(prof, new_pres)
+            else:
+                prof_vars['omeg'] = np.ma.masked_array(
+                    new_pres, mask=np.ones(len(new_pres), dtype=int)
+                )
+
+            u, v = interp.components(prof, new_pres)
+            prof_vars['u'] = u
+            prof_vars['v'] = v
+
+            interp_prof = cls.copy(prof, **prof_vars)
+
+        else:
+            raise ValueError(f"Unknown interpolation mode: {mode!r}. "
+                             "Use 'fill_missing' or 'pressure_grid'.")
+
+        # ── 4. Commit ────────────────────────────────────────────────────────
         self._profs[self._highlight][self._prof_idx] = interp_prof
 
-         # Save the original like in modify()
         if self._prof_idx not in self._interp_profs:
             self._interp_profs[self._prof_idx] = interp_prof
-       
-        # Update bookkeeping
+
         self._interp[self._prof_idx] = True
+
 
     def resetModification(self, *args):
         """
