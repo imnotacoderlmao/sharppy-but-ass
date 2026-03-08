@@ -505,10 +505,26 @@ class plotText(backgroundText):
             y1 += vspace
 
         ## middle-right column
+        ## testing wether thisll actually color the 3cape text (it did)
+        if self.prof.mlpcl.b3km > 125:
+            color = QtGui.QColor('#FF00FF')
+        elif self.prof.mlpcl.b3km > 100:
+            color = QtGui.QColor('#FF0000')
+        elif self.prof.mlpcl.b3km > 75:
+            color = QtGui.QColor('#FFA500')
+        elif self.prof.mlpcl.b3km > 50:
+            color = QtGui.QColor('#FFFF00')
+        elif self.prof.mlpcl.b3km > 25:
+            color = QtGui.QColor('#00FF00')
+        else:
+            color = self.fg_color
         y1 = self.ylast + self.tpad
         texts = ['WNDG = ', 'TEI = ', '3CAPE = ', 'MBURST = ', '', 'SigSvr = ']
+        colors = [self.fg_color, self.fg_color, color, self.fg_color, self.fg_color, self.fg_color]
         indices = [self.wndg, self.tei, tab.utils.INT2STR(self.prof.mlpcl.b3km), tab.utils.INT2STR(self.prof.mburst), '', self.sigsevere + ' m3/s3']
-        for text, index in zip(texts, indices):
+        for text, index, col in zip(texts, indices, colors):
+            pen = QtGui.QPen(col, 1, QtCore.Qt.SolidLine)
+            qp.setPen(pen)
             rect = QtCore.QRect(x1*6, y1, x1*4, self.label_height)
             qp.drawText(rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignLeft, text + index)
             vspace = self.label_height
