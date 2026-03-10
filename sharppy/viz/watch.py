@@ -120,7 +120,7 @@ class plotWatch(backgroundWatch):
 
         
         self.color_map = {
-            'are you\n in jupiter.':        'wtf_color',
+            'are you\n in jupiter?':        'wtf_color',
             'WHAT THE FUCK':        'pdstor_color',
             'BIG WEDGE\n OMGGGG':        'pdstor_color',
             'OMG TOR':            'tor_color',

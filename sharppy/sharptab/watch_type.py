@@ -579,10 +579,10 @@ def possible_watch(prof, use_left=False):
     #    prof.mlpcl.bminus > -50 and prof.ebotm == 0.:
     #    watch_types.append("MRGL TOR")
 
-    if stp_eff >= 50 and stp_fixed >= 50 and srh1km >= 850 and esrh >= 850 and srw_4_6km >= 65.0 and \
-        sfc_8km_shear > 85.0 and prof.sfcpcl.lclhght < 1000. and prof.mlpcl.lclhght < 1200 and lr1 >= 7.0 and \
+    if stp_eff >= 50 and stp_fixed >= 50 and srh1km >= 850 and esrh >= 1200 and srw_4_6km >= 60.0 and \
+        sfc_8km_shear > 100.0 and prof.sfcpcl.lclhght < 1000. and prof.mlpcl.lclhght < 1200 and lr1 >= 7.0 and \
         prof.mlpcl.bminus > -50 and prof.ebotm == 0:
-        watch_types.append("are you\n in jupiter.")
+        watch_types.append("are you\n in jupiter?")
     elif stp_eff >= 10 and stp_fixed >= 10 and srh1km >= 500 and esrh >= 500 and srw_4_6km >= 45.0 and \
         sfc_8km_shear > 65.0 and prof.sfcpcl.lclhght < 1000. and prof.mlpcl.lclhght < 1200 and lr1 >= 7.0 and \
         prof.mlpcl.bminus > -50 and prof.ebotm == 0:

@@ -81,7 +81,7 @@ class backgroundWinds(QtWidgets.QFrame):
         pen = QtGui.QPen(self.fg_color, 2, QtCore.Qt.SolidLine)
         qp.setPen(pen)
         qp.setFont(self.label_font)
-        qp.drawText(15, 5, 45, 35,
+        qp.drawText(15, 5, 45, 35, QtCore.Qt.TextDontClip |
             QtCore.Qt.AlignVCenter | QtCore.Qt.AlignHCenter,
             'SR Wind\nv.\nHeight')
         ## draw the frame borders
@@ -101,7 +101,7 @@ class backgroundWinds(QtWidgets.QFrame):
         qp.setPen(pen)
         qp.drawLine( classic1, lower, classic1, upper )
         qp.drawLine( classic2, lower, classic2, upper )
-        qp.drawText(classic1-5, 2, 50, 50,
+        qp.drawText(classic1-5, 2, 50, 50, QtCore.Qt.TextDontClip |
             QtCore.Qt.AlignVCenter | QtCore.Qt.AlignHCenter,
             'Classic\nSupercell')
         ## draw the plot description text

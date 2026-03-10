@@ -28,6 +28,18 @@ def drawHalfBarb(path, shemis=False):
 def drawBarb(qp, origin_x, origin_y, wdir, wspd, color='#FFFFFF', shemis=False):
     # Custom colors by speed:
     if wspd <= 9999:
+        color = '#2200FF'
+    if wspd <= 100:
+        color = '#4400FF'
+    if wspd <= 95:
+        color = '#6600FF'
+    if wspd <= 90:
+        color = '#8800FF'
+    if wspd <= 85:
+        color = '#BB00FF'
+    if wspd <= 80:
+        color = '#FF00FF'
+    if wspd <= 75:
         color = '#FF0000'
     if wspd <= 60:
         color = '#FF4000'
