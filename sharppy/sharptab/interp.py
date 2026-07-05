@@ -12,6 +12,99 @@ __all__ += ['thetae', 'wetbulb', 'theta', 'mixratio']
 __all__ += ['to_agl', 'to_msl']
 
 
+# ---------------------------------------------------------------------------
+# Profile-scoped interpolation cache
+#
+# params.parcelx()/cape()/etc. call interp.temp/vtmp/dwpt/hght/... hundreds of
+# times per parcel (LFC/EL bisection, layer-top/bottom lookups, temp_lvl,
+# bulk_rich, ...), always against the *same* prof.pres/hght/tmpc/dwpc/vtmp/...
+# arrays. Those arrays never mutate once a Profile is built (a "changed"
+# sounding is a new Profile object, see prof_collection.py), so the
+# mask-filtering work generic_interp_pres/hght did on every single call is
+# pure repeated work: same inputs, same output, every time.
+#
+# We cache the filtered (mask-dropped) x/y arrays on the profile object
+# itself the first time a given field pair is interpolated, keyed by a
+# fixed string per field (not by id() of the arrays), so there's no
+# use-after-free/identity-reuse hazard: the cache lives and dies with the
+# Profile instance that owns the data it describes.
+# ---------------------------------------------------------------------------
+
+def _valid_xy(prof, key, x, y):
+    '''
+    Return (x_valid, y_valid) plain ndarrays with masked/invalid entries
+    dropped from both, computed once per Profile instance and cached under
+    `key` for reuse by every subsequent interpolation against that pair.
+    '''
+    cache = prof.__dict__.get('_interp_valid_cache')
+    if cache is None:
+        cache = {}
+        try:
+            prof._interp_valid_cache = cache
+        except Exception:
+            # If for some reason attribute assignment isn't allowed (custom
+            # prof-like object), just skip caching rather than fail the call.
+            cache = None
+    if cache is not None:
+        entry = cache.get(key)
+        if entry is not None:
+            return entry
+
+    not_masked = ~ma.getmaskarray(x) & ~ma.getmaskarray(y)
+    x_valid = np.asarray(x)[not_masked]
+    y_valid = np.asarray(y)[not_masked]
+    entry = (x_valid, y_valid)
+    if cache is not None:
+        cache[key] = entry
+    return entry
+
+
+def _interp_cached(prof, key, query, x, y, log_query=False, log_result=False):
+    '''
+    Cached counterpart to generic_interp_pres for the fixed, profile-bound
+    (x, y) pairs used by the wrapper functions below (pres/hght/temp/dwpt/
+    vtmp/theta/thetae/wetbulb/mixratio/components/omeg). Numerically
+    identical to generic_interp_pres(query, x, y); see that function's
+    docstring for the (already reversed/log-transformed as needed) inputs.
+
+    The overwhelmingly common case (profiled: params.parcelx's LFC/EL
+    bisection, temp_lvl, layer lookups, ...) is a single scalar pressure/
+    height query. That path is kept entirely free of numpy.ma: no
+    MaskedArray construction, no ma.where, no ma.log10 -- those turned out
+    (by profiling) to be a bigger cost than the interpolation itself.
+    The array-query path (rare from these wrappers, but still supported)
+    falls back to the original masked-array-returning behavior.
+    '''
+    x_valid, y_valid = _valid_xy(prof, key, x, y)
+
+    if x_valid.shape[0] == 0 or y_valid.shape[0] == 0:
+        return ma.masked_where(ma.ones(np.shape(query)), query)
+
+    is_array_query = np.ndim(query) != 0
+
+    if not is_array_query:
+        # Scalar fast path.
+        if query is ma.masked:
+            return ma.masked
+        q = np.log10(query) if log_query else query
+        val = np.interp(q, x_valid, y_valid, left=np.nan, right=np.nan)
+        val = float(val)
+        if log_result:
+            val = 10. ** val
+        if val != val:  # NaN check (cheaper than np.isnan for a plain float)
+            return ma.masked
+        return val
+
+    # Array-query path: keep the original masked-array-returning contract.
+    q = ma.log10(query) if log_query else query
+    field_intrp = np.interp(q, x_valid, y_valid, left=np.nan, right=np.nan)
+    field_intrp = ma.where(np.isnan(field_intrp), ma.masked, field_intrp)
+    if log_result:
+        field_intrp = 10 ** field_intrp
+    return field_intrp
+
+
+
 def pres(prof, h):
     '''
     Interpolates the given data to calculate a pressure at a given height
@@ -28,7 +121,7 @@ def pres(prof, h):
     Pressure (hPa) at the given height : number, numpy array
 
     '''
-    return generic_interp_hght(h, prof.hght, prof.logp, log=True)
+    return _interp_cached(prof, 'hght_logp', h, prof.hght, prof.logp, log_result=True)
 
 
 def hght(prof, p):
@@ -51,7 +144,7 @@ def hght(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.hght[::-1])
+    return _interp_cached(prof, 'logp_hght', p, prof.logp[::-1], prof.hght[::-1], log_query=True)
 
 def omeg(prof, p):
     '''
@@ -73,7 +166,7 @@ def omeg(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.omeg[::-1])
+    return _interp_cached(prof, 'logp_omeg', p, prof.logp[::-1], prof.omeg[::-1], log_query=True)
 
 def temp(prof, p):
     '''
@@ -95,7 +188,7 @@ def temp(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.tmpc[::-1])
+    return _interp_cached(prof, 'logp_tmpc', p, prof.logp[::-1], prof.tmpc[::-1], log_query=True)
 
 def thetae(prof, p):
     '''
@@ -117,7 +210,7 @@ def thetae(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.thetae[::-1])
+    return _interp_cached(prof, 'logp_thetae', p, prof.logp[::-1], prof.thetae[::-1], log_query=True)
 
 def mixratio(prof, p):
     '''
@@ -139,7 +232,7 @@ def mixratio(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.wvmr[::-1])
+    return _interp_cached(prof, 'logp_wvmr', p, prof.logp[::-1], prof.wvmr[::-1], log_query=True)
 
 
 def theta(prof, p):
@@ -162,7 +255,7 @@ def theta(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.theta[::-1])
+    return _interp_cached(prof, 'logp_theta', p, prof.logp[::-1], prof.theta[::-1], log_query=True)
 
 def wetbulb(prof, p):
     '''
@@ -184,7 +277,7 @@ def wetbulb(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.wetbulb[::-1])
+    return _interp_cached(prof, 'logp_wetbulb', p, prof.logp[::-1], prof.wetbulb[::-1], log_query=True)
 
 def dwpt(prof, p):
     '''
@@ -207,7 +300,7 @@ def dwpt(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.dwpc[::-1])
+    return _interp_cached(prof, 'logp_dwpc', p, prof.logp[::-1], prof.dwpc[::-1], log_query=True)
 
 
 def vtmp(prof, p):
@@ -227,7 +320,7 @@ def vtmp(prof, p):
     Virtual tmperature (C) at the given pressure : number, numpy array
 
     '''
-    return generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.vtmp[::-1])
+    return _interp_cached(prof, 'logp_vtmp', p, prof.logp[::-1], prof.vtmp[::-1], log_query=True)
 
 
 def components(prof, p):
@@ -253,8 +346,8 @@ def components(prof, p):
     if prof.wdir.count() == 0:
         # JTS - Fixed a bug where clicking "Interpolate Focused Profile" throws an error for NUCAPS.
         return ma.masked_where(ma.ones(np.shape(p)), p), ma.masked_where(ma.ones(np.shape(p)), p)
-    U = generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.u[::-1])
-    V = generic_interp_pres(ma.log10(p), prof.logp[::-1], prof.v[::-1])
+    U = _interp_cached(prof, 'logp_u', p, prof.logp[::-1], prof.u[::-1], log_query=True)
+    V = _interp_cached(prof, 'logp_v', p, prof.logp[::-1], prof.v[::-1], log_query=True)
     return U, V
 
 
@@ -339,21 +432,17 @@ def generic_interp_hght(h, hght, field, log=False):
     if field.count() == 0 or hght.count() == 0:
         return ma.masked_where(ma.ones(np.shape(h)), h) # JTS
 
-    if ma.isMaskedArray(hght):
-        # Multiplying by ones ensures that the result is an array, not a single value ... which
-        # happens sometimes ... >.<
-        not_masked1 = ~hght.mask * np.ones(hght.shape, dtype=bool)
-    else:
-        not_masked1 = np.ones(hght.shape)
+    # Avoid repeated MaskedArray.__getitem__/__array_finalize__ overhead (which
+    # dominates cost when this is called scalar-at-a-time hundreds of times
+    # per sounding, e.g. from parcelx's LFC/EL bisection and layer lookups).
+    # ma.getmaskarray() is a single fast call instead of two allocations, and
+    # indexing the raw .data ndarray skips MaskedArray's per-getitem machinery.
+    not_masked = ~ma.getmaskarray(hght) & ~ma.getmaskarray(field)
 
-    if ma.isMaskedArray(field):
-        not_masked2 = ~field.mask * np.ones(field.shape, dtype=bool)
-    else:
-        not_masked2 = np.ones(field.shape)
+    hght_data = np.asarray(hght)
+    field_data = np.asarray(field)
 
-    not_masked = not_masked1 * not_masked2
-
-    field_intrp = np.interp(h, hght[not_masked], field[not_masked], left=ma.masked, right=ma.masked)
+    field_intrp = np.interp(h, hght_data[not_masked], field_data[not_masked], left=np.nan, right=np.nan)
 
     if hasattr(h, 'shape') and h.shape == tuple():
         h = h[()]
@@ -393,21 +482,12 @@ def generic_interp_pres(p, pres, field):
     if field.count() == 0 or pres.count() == 0:
         return ma.masked_where(ma.ones(np.shape(p)), p) # JTS
 
-    if ma.isMaskedArray(pres):
-        not_masked1 = ~pres.mask * np.ones(pres.shape, dtype=bool)
-    else:
-        not_masked1 = np.ones(pres.shape, dtype=bool)
-        not_masked1[:] = True
+    not_masked = ~ma.getmaskarray(pres) & ~ma.getmaskarray(field)
 
-    if ma.isMaskedArray(field):
-        not_masked2 = ~field.mask * np.ones(field.shape, dtype=bool)
-    else:
-        not_masked2 = np.ones(field.shape, dtype=bool)
-        not_masked2[:] = True
+    pres_data = np.asarray(pres)
+    field_data = np.asarray(field)
 
-    not_masked = not_masked1 * not_masked2
-
-    field_intrp = np.interp(p, pres[not_masked], field[not_masked], left=ma.masked, right=ma.masked)
+    field_intrp = np.interp(p, pres_data[not_masked], field_data[not_masked], left=np.nan, right=np.nan)
 
     if hasattr(p, 'shape') and p.shape == tuple():
         p = p[()]

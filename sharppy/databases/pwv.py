@@ -61,7 +61,7 @@ def get_mean_pwv(station):
     else:
         station_idx = station_idx + 1
         ## get the PWV
-        mean_pwv = pwv_means[station_idx, 3:][0].astype(np.float)
+        mean_pwv = pwv_means[station_idx, 3:][0].astype(np.float64)
     return mean_pwv
 
 def get_stdev_pwv(station):
@@ -111,7 +111,7 @@ def get_stdev_pwv(station):
     else:
         station_idx = station_idx + 1
         ## get the PWV
-        stdev_pwv = pwv_stdevs[station_idx, 3:][0].astype(np.float)
+        stdev_pwv = pwv_stdevs[station_idx, 3:][0].astype(np.float64)
     return stdev_pwv
 
 def pwv_climo(prof, station, month=None):
@@ -155,22 +155,22 @@ def pwv_climo(prof, station, month=None):
     sigma_2 = (month_mean - (2.*month_std), month_mean + (2.*month_std))
     sigma_3 = (month_mean - (3.*month_std), month_mean + (3.*month_std))
 
-    if len(np.where(pwv_300 > sigma_3[1])[0]) > 0:
+    if pwv_300 > sigma_3[1]:
         # Means the PWV value is outside +3 sigma of the distribution
         flag = 3
-    elif len(np.where(pwv_300 < sigma_3[0])[0]) > 0:
+    elif pwv_300 < sigma_3[0]:
         # Means the PWV value is outside -3 sigma of the distribution
         flag = -3
-    elif len(np.where(pwv_300 > sigma_2[1])[0]) > 0:
+    elif pwv_300 > sigma_2[1]:
         # Means the PWV value is outside +2 sigma of the distribution
         flag = 2
-    elif len(np.where(pwv_300 < sigma_2[0])[0]) > 0:
+    elif pwv_300 < sigma_2[0]:
         # Means the PWV value is outside -2 sigma of the distribution
         flag = -2
-    elif len(np.where(pwv_300 > sigma_1[1])[0]) > 0:
+    elif pwv_300 > sigma_1[1]:
         # Means the PWV value is outside +1 sigma of the distribution
         flag = 1
-    elif len(np.where(pwv_300 < sigma_1[0])[0]) > 0:
+    elif pwv_300 < sigma_1[0]:
         # Means the PWV value is outside -1 sigma of the distribution
         flag = -1
     else:

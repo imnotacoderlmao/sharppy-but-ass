@@ -109,7 +109,7 @@ class backgroundHodo(QFrame):
 
         '''
         ## get the new scaling magnitude
-        new_mag = self.hodomag - e.delta() / 5
+        new_mag = self.hodomag - (e.angleDelta().y() / 5)
         ## make sure the user doesn't zoom out of
         ## bounds to prevent drawing issues
         if new_mag >= self.min_zoom and new_mag <= self.max_zoom:
@@ -157,8 +157,8 @@ class backgroundHodo(QFrame):
         ## initialize a QPainter object.
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         ## draw the wind speed rings
         for spd in self.rings: self.draw_ring(spd, qp)
         ## draw the frame axes
@@ -704,8 +704,8 @@ class plotHodo(backgroundHodo):
                 boundary_color = QtGui.QColor("#CC9900")
                 pen = QtGui.QPen(boundary_color, penwidth)
                 qp.begin(self.plotBitMap)
-                qp.setRenderHint(qp.Antialiasing)
-                qp.setRenderHint(qp.TextAntialiasing)
+                qp.setRenderHint(qp.RenderHint.Antialiasing)
+                qp.setRenderHint(qp.RenderHint.TextAntialiasing)
                 qp.setPen(pen)
                 qp.drawLine(x1, y1, x2, y2)
                 center_rm = QtCore.QPointF(e.x(),e.y())
@@ -1021,8 +1021,8 @@ class plotHodo(backgroundHodo):
 
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
 
         cur_dt = self.prof_collections[self.pc_idx].getCurrentDate()
         bc_idx = 0

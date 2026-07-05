@@ -354,8 +354,8 @@ class plotKinematics(backgroundKinematics):
         ## initialize a QPainter object
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         ## draw the indices
         self.drawKinematics(qp)
         self.drawBarbs(qp)

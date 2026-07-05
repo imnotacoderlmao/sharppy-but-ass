@@ -57,8 +57,8 @@ class backgroundSpeed(QtWidgets.QFrame):
         ## initialize a QPainter object
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         ## draw the background frame
         self.draw_frame(qp)
         ## draw the vertical ticks for wind speed
@@ -225,8 +225,8 @@ class plotSpeed(backgroundSpeed):
 
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         ## draw the wind speed profile
         self.draw_profile(qp)
         qp.end()

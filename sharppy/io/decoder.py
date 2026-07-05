@@ -12,7 +12,9 @@ import certifi
 from datetime import datetime
 import glob
 import os
-import imp
+import importlib.util
+import importlib.machinery
+import ssl
 import logging
 
 class abstract(object):
@@ -26,6 +28,16 @@ class abstract(object):
 
 HOME_DIR = os.path.join(os.path.expanduser("~"), ".sharppy", "decoders")
 _decoders = {}
+
+def load_source(modname, filename):
+    loader = importlib.machinery.SourceFileLoader(modname, filename)
+    spec = importlib.util.spec_from_file_location(modname, filename, loader=loader)
+    module = importlib.util.module_from_spec(spec)
+    # The module is always executed and not cached in sys.modules.
+    # Uncomment the following line to cache the module.
+    sys.modules[module.__name__] = module
+    loader.exec_module(module)
+    return module
 
 def findDecoders():
     global _decoders
@@ -51,7 +63,7 @@ def findDecoders():
         # Find and load custom decoders
         dec_mod_name = os.path.basename(dec)[:-3]
         logging.debug("Found custom decoder '%s'." % dec_mod_name)
-        dec_imp = imp.load_source(dec_mod_name, dec)
+        dec_imp = load_source(dec_mod_name, dec)        
 
         dec_name = dec_imp.__classname__
         fmt_name = dec_imp.__fmtname__
@@ -81,7 +93,8 @@ class Decoder(object):
         # I can figure out a cleaner way to make sure the file (either local or URL)
         # gets opened.
         try:
-            f = urlopen(self._file_name, cafile=certifi.where())
+            context = ssl.create_default_context(cafile=certifi.where())
+            f = urlopen(self._file_name, context=context)
         except (ValueError, IOError):
             try:
                 fname = self._file_name[7:] if self._file_name.startswith('file://') else self._file_name

@@ -64,8 +64,8 @@ class backgroundSTPEF(QtWidgets.QFrame):
         ## initialize a painter object and draw the frame
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         self.draw_frame(qp)
         qp.end()
 
@@ -325,8 +325,8 @@ class plotSTPEF(backgroundSTPEF):
 
     def draw_stp(self, qp):
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         stpc_pix = self.stpc_to_pix(self.stpc)
         pen = QtGui.QPen(self.fg_color, 1.5, QtCore.Qt.DotLine)
         qp.setPen(pen)

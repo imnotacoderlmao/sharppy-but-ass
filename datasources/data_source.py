@@ -2,6 +2,7 @@
 import xml.etree.ElementTree as ET
 import glob, os, sys, shutil
 from datetime import datetime, timedelta
+import ssl
 try:
     from urllib2 import urlopen, URLError
     from urllib import quote
@@ -13,7 +14,8 @@ except ImportError:
 
 import certifi
 import platform, subprocess, re
-import imp
+import importlib.util
+import importlib.machinery
 import socket
 import logging
 import traceback
@@ -26,6 +28,16 @@ import sutils.frozenutils as frozenutils
 
 HOME_DIR = os.path.join(os.path.expanduser("~"), ".sharppy", "datasources")
 NUCAPS_times_file = os.path.join(HOME_DIR, "nucapsTimes.txt") # JTS
+
+def load_source(modname, filename):
+    loader = importlib.machinery.SourceFileLoader(modname, filename)
+    spec = importlib.util.spec_from_file_location(modname, filename, loader=loader)
+    module = importlib.util.module_from_spec(spec)
+    # The module is always executed and not cached in sys.modules.
+    # Uncomment the following line to cache the module.
+    sys.modules[module.__name__] = module
+    loader.exec_module(module)
+    return module
 
 # Cleanup; Remove nucapsTimes.txt and cloudTopValues.txt when main GUI opens.
 if os.path.isfile(NUCAPS_times_file):
@@ -41,8 +53,9 @@ else:
     if not os.path.exists(avail_loc):
         pkg_avail_loc = os.path.join(os.path.dirname(__file__), 'available.py')
         shutil.copy(pkg_avail_loc, avail_loc)
+    available = load_source('available', avail_loc)
 
-    available = imp.load_source('available', avail_loc)
+    
 
 # TAS: Comment this file and available.py
 
@@ -85,7 +98,8 @@ def loadDataSources(ds_dir=HOME_DIR):
 
 def _pingURL(hostname, timeout=1):
     try:
-        urlopen(hostname, timeout=timeout, cafile=certifi.where())
+        context = ssl.create_default_context(cafile=certifi.where())
+        urlopen(hostname, timeout=timeout, context=context)
     except URLError:
         return False
     except socket.timeout as e:

@@ -32,6 +32,52 @@ __all__ += ['convective_temp', 'esp', 'pbl_top', 'precip_eff', 'dcape', 'sig_sev
 __all__ += ['dgz', 'ship', 'stp_cin', 'stp_fixed', 'scp', 'mmp', 'wndg', 'sherb', 'tei', 'cape']
 __all__ += ['mburst', 'dcp', 'ehi', 'sweat', 'hgz', 'lhp', 'integrate_parcel']
 
+def _plain_level_arrays(prof):
+    '''
+    Return (pres, tmpc, hght, vtmp) as plain float64 ndarrays with missing
+    values as NaN, instead of numpy.ma.MaskedArray.
+
+    cape()'s main parcel-lifting loop indexes prof.pres[i]/prof.tmpc[i]/
+    prof.hght[i]/prof.vtmp[i] one scalar at a time, hundreds of times per
+    parcel. MaskedArray.__getitem__ isn't a simple array lookup: it goes
+    through _update_from/__array_finalize__/view on every single call,
+    which profiling showed as the single largest cost in a sounding
+    calculation -- well above the interpolation and thermo math it's
+    surrounding. Missing data (-9999.0, see constants.MISSING) is already
+    masked out by Profile.__init__ before this is ever called, so
+    "masked" and "NaN" mean exactly the same thing here; the loop below
+    only needs to skip NaN levels the same way it used to skip masked
+    ones.
+
+    Computed once per Profile instance (arrays don't mutate after
+    Profile.__init__ finishes, see profile.py) and cached on the
+    profile object itself, so repeat calls (sfc/ml/mu/fcst parcels, plus
+    any iterative callers like effective_inflow_layer) reuse it instead
+    of re-filling every time.
+    '''
+    cache = prof.__dict__.get('_plain_level_array_cache')
+    if cache is None:
+        cache = {}
+        try:
+            prof._plain_level_array_cache = cache
+        except Exception:
+            cache = None
+
+    if cache is not None:
+        entry = cache.get('pres_tmpc_hght_vtmp')
+        if entry is not None:
+            return entry
+
+    pres_p = np.ascontiguousarray(ma.filled(prof.pres, np.nan), dtype=np.float64)
+    tmpc_p = np.ascontiguousarray(ma.filled(prof.tmpc, np.nan), dtype=np.float64)
+    hght_p = np.ascontiguousarray(ma.filled(prof.hght, np.nan), dtype=np.float64)
+    vtmp_p = np.ascontiguousarray(ma.filled(prof.vtmp, np.nan), dtype=np.float64)
+    entry = (pres_p, tmpc_p, hght_p, vtmp_p)
+
+    if cache is not None:
+        cache['pres_tmpc_hght_vtmp'] = entry
+    return entry
+
 class DefineParcel(object):
     '''
         Create a parcel from a supplied profile object.
@@ -1673,11 +1719,15 @@ def cape(prof, pbot=None, ptop=None, dp=-1, new_lifter=False, trunc=False, **kwa
 
         if pcl.bplus == 0: pcl.bminus = 0.
     else:
-        for i in range(lptr, prof.pres.shape[0]):
-            if not utils.QC(prof.tmpc[i]): continue
-            pe2 = prof.pres[i]
-            h2 = prof.hght[i]
-            te2 = prof.vtmp[i]
+        pres_p, tmpc_p, hght_p, vtmp_p = _plain_level_arrays(prof)
+        n_levels = pres_p.shape[0]
+        for i in range(lptr, n_levels):
+            tmpc_i = tmpc_p[i]
+            if tmpc_i != tmpc_i:  # NaN check (was: not utils.QC(prof.tmpc[i]))
+                continue
+            pe2 = pres_p[i]
+            h2 = hght_p[i]
+            te2 = vtmp_p[i]
             tp2 = thermo.wetlift(pe1, tp1, pe2)
             tdef1 = (thermo.virtemp(pe1, tp1, tp1) - te1) / thermo.ctok(te1)
             tdef2 = (thermo.virtemp(pe2, tp2, tp2) - te2) / thermo.ctok(te2)
@@ -2886,10 +2936,15 @@ def dcape(prof):
     mask = np.maximum( mask1, mask2 )
     prof_thetae = prof_thetae[~mask]
     prof_wetbulb = prof_wetbulb[~mask]
-    pres = prof.pres[~mask]
-    hght = prof.hght[~mask]
-    dwpc = prof.dwpc[~mask]
-    tmpc = prof.tmpc[~mask]
+    # These are indexed scalar-at-a-time in the lowering loop below; once
+    # filtered above, no masked values remain, so np.asarray() here just
+    # strips the (now-redundant) MaskedArray wrapper and its per-getitem
+    # overhead (_update_from/__array_finalize__), same fix as cape()'s
+    # main loop above.
+    pres = np.asarray(prof.pres[~mask])
+    hght = np.asarray(prof.hght[~mask])
+    dwpc = np.asarray(prof.dwpc[~mask])
+    tmpc = np.asarray(prof.tmpc[~mask])
     idx = np.where(pres >= sfc_pres - 400.)[0]
 
     # Find the minimum average theta-e in a 100 mb layer

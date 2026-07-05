@@ -226,8 +226,8 @@ class plotWatch(backgroundWatch):
 
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         pen = QtGui.QPen(QtGui.QColor(watch_type_color), 1, QtCore.Qt.SolidLine)
         qp.setPen(pen)        
         qp.setFont(self.plot_font)

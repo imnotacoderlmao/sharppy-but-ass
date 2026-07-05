@@ -71,8 +71,8 @@ class backgroundVROT(QtWidgets.QFrame):
         ## initialize a painter object and draw the frame
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         self.draw_frame(qp)
         qp.end()
 
@@ -306,8 +306,8 @@ class plotVROT(backgroundVROT):
 
     def draw_vrot(self, qp):
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         vrot_pix = self.vrot_to_pix(self.vrot)
         # plot the white dashed line
         pen = QtGui.QPen(self.fg_color, 1.5, QtCore.Qt.DotLine)

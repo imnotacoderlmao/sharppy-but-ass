@@ -6,7 +6,7 @@ channels:
 dependencies:
   - python=3
   - numpy=1.15.*
-  - pyside2=5.13.*
+  - pyside6
   - sphinx
   - qtpy
   - sphinx_rtd_theme

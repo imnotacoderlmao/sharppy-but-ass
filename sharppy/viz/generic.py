@@ -64,8 +64,8 @@ class backgroundGeneric(QtWidgets.QFrame):
         ## draw onto the QPixmap
         qp.begin(self.plotBitMap)
         ## these settings usually give better performance
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         ## draw background frame
         self.draw_frame(qp)
         ## draw the x and y tick axes
@@ -138,8 +138,8 @@ class backgroundGeneric(QtWidgets.QFrame):
         ## initialize a painter and paint on the bitmap
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
 
         ## initialize a pen
         text_font = QtGui.QFont(font, fontsize)
@@ -307,8 +307,8 @@ class plotGeneric(backgroundGeneric):
         ## create a new painter object
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         self.draw_lines(qp)
         ## end the painter
         qp.end()

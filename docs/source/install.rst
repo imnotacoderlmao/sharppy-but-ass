@@ -88,7 +88,7 @@ Since SHARPpy requires these packages, you will need to install them.  If you ch
 
 .. prompt:: bash
 
-    conda install -c conda-forge pyside2=5.12.* requests python-dateutil
+    conda install -c conda-forge pyside6 requests python-dateutil
 
 After installing all the required Python packages for SHARPpy, you now can install the SHARPpy package to your computer.  You'll need to download it to your computer first and open up a command line prompt.  You can download it as a ZIP file (link on the right) or clone the Git respository (you will need the git program) into a directory on your computer by typing this into your command line:
 

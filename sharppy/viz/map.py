@@ -760,7 +760,7 @@ class MapWidget(QWidget):
 
     def wheelEvent(self, e):
         max_speed = 75
-        delta = max(min(-e.delta(), max_speed), -max_speed)
+        delta = max(min(-e.angleDelta().y(), max_speed), -max_speed)
         scale_fac = 10 ** (delta / 1000.)
 
         scaled_size = float(min(self.default_width, self.default_height)) / min(self.width(), self.height())
@@ -824,7 +824,8 @@ class MapWidget(QWidget):
         stn_idx = np.argmin(dists)
         if dists[stn_idx] <= 5:
             stn_x, stn_y = stn_xs[stn_idx], stn_ys[stn_idx]
-            fm = QtGui.QFontMetrics(QtGui.QFont(self.font().rawName(), 16))
+            current_font = QtGui.QFont(self.font().family(), 16)
+            fm = QtGui.QFontMetrics(current_font)
 
             label_offset = 5
             align = 0

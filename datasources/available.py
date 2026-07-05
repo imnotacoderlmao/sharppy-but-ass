@@ -4,6 +4,7 @@ try:
 except ImportError:
     from urllib.request import urlopen
 
+import ssl
 import certifi
 import re
 import numpy as np
@@ -21,7 +22,8 @@ def _download_goes():
     global goes_time, goes_text
     now = datetime.utcnow()
     if goes_time is None or goes_time < now - cache_len:
-        url_obj = urlopen(goes_base_url, cafile=certifi.where())
+        context = ssl.create_default_context(cafile=certifi.where())
+        url_obj = urlopen(goes_base_url, context=context)
         goes_text = url_obj.read().decode('utf-8')
         goes_time = now
 
@@ -41,7 +43,7 @@ def _available_goes(dt=None):
     '''
     text = _download_goes()
 
-    matches = sorted(list(set(re.findall("([\d]{10})/", text))))
+    matches = sorted(list(set(re.findall(r"([\d]{10})/", text))))
     return [ datetime.strptime(m, '%Y%m%d%H') for m in matches ]
 
 def _availableat_goes(dt):
@@ -60,7 +62,8 @@ def _availableat_goes(dt):
             An array that contains all of the three letter station identfiers.
     '''
     recent_url = "%s%s/available.txt" % (goes_base_url, dt.strftime('%Y%m%d%H'))
-    text = urlopen(recent_url, cafile=certifi.where()).read().decode('utf-8')
+    context = ssl.create_default_context(cafile=certifi.where())
+    text = urlopen(recent_url, context=context).read().decode('utf-8')
     matches = re.findall("(.+).txt", text)
     return matches
 
@@ -76,7 +79,8 @@ def _download_sharp():
     global sharp_time, sharp_text
     now = datetime.utcnow()
     if sharp_time is None or sharp_time < now - cache_len:
-        url_obj = urlopen(sharp_base_url, cafile=certifi.where())
+        context = ssl.create_default_context(cafile=certifi.where())
+        url_obj = urlopen(sharp_base_url, context=context)
         sharp_text = url_obj.read().decode('utf-8')
         sharp_time = now
     return sharp_text
@@ -90,7 +94,8 @@ def _download_sharp_archive(dt):
     except:
         dt = dt
     if sharp_archive_time is None or sharp_archive_time < now - cache_len:
-        url_obj = urlopen(dt.strftime(base_url), cafile=certifi.where())
+        context = ssl.create_default_context(cafile=certifi.where())
+        url_obj = urlopen(dt.strftime(base_url), context=context)
         sharp_archive_text = url_obj.read().decode('utf-8')
         sharp_time = now
     return sharp_archive_text, dt
@@ -109,11 +114,11 @@ def _available_sharp(dt=None):
     '''
     if dt is None:
         text = _download_sharp()
-        matches = sorted(list(set(re.findall("([\d]{10})/", text))))
+        matches = sorted(list(set(re.findall(r"([\d]{10})/", text))))
         return [ datetime.strptime(m, '%Y%m%d%H') for m in matches ]
     else:
         text, dt = _download_sharp_archive(dt)
-        matches = sorted(list(set(re.findall(">([\d]{2})/<", text))))
+        matches = sorted(list(set(re.findall(r">([\d]{2})/<", text))))
         return [ datetime.strptime(dt.strftime('%Y%m%d') + m, '%Y%m%d%H')  for m in matches ]
 
 def _availableat_sharp(dt):
@@ -135,7 +140,8 @@ def _availableat_sharp(dt):
     #text = urlopen(recent_url).read().decode('utf-8')
     #matches = re.findall("a href=\"(.+).txt\"", text)
     recent_url = 'http://sharp.weather.ou.edu/soundings/archive/%Y/%m/%d/%H/'
-    text = urlopen(dt.strftime(recent_url), cafile=certifi.where()).read().decode('utf-8')
+    context = ssl.create_default_context(cafile=certifi.where())
+    text = urlopen(dt.strftime(recent_url), context=context).read().decode('utf-8')
     matches = re.findall("a href=\"(.+).txt\"", text)
     return matches
 
@@ -156,7 +162,8 @@ nucaps_text = ""
 # Retrieve the obs times for CONUS NOAA-20.
 def _download_nucaps_conus_j01():
     global nucaps_text
-    nucaps_text = urlopen(nucaps_conus_j01_url, cafile=certifi.where()).read().decode('utf-8')
+    context = ssl.create_default_context(cafile=certifi.where())
+    nucaps_text = urlopen(nucaps_conus_j01_url, context=context).read().decode('utf-8')
     return nucaps_text
 
 def _available_nucaps_conus_j01(dt=None):
@@ -172,7 +179,7 @@ def _available_nucaps_conus_j01(dt=None):
             of sounding data on the SPoRT FTP site.
     '''
     text = _download_nucaps_conus_j01()
-    matches = sorted(list(set(re.findall(">([\d]{12})</a", text))))
+    matches = sorted(list(set(re.findall(r">([\d]{12})</a", text))))
     return [ datetime.strptime(m, '%Y%m%d%H%M') for m in matches ]
 
 
@@ -180,7 +187,8 @@ def _available_nucaps_conus_j01(dt=None):
 # Retrieve the obs times for CONUS Aqua.
 def _download_nucaps_conus_aq0():
     global nucaps_text
-    nucaps_text = urlopen(nucaps_conus_aq0_url, cafile=certifi.where()).read().decode('utf-8')
+    context = ssl.create_default_context(cafile=certifi.where())
+    nucaps_text = urlopen(nucaps_conus_aq0_url, context=context).read().decode('utf-8')
     return nucaps_text
 
 def _available_nucaps_conus_aq0(dt=None):
@@ -196,7 +204,7 @@ def _available_nucaps_conus_aq0(dt=None):
             of sounding data on the SPoRT FTP site.
     '''
     text = _download_nucaps_conus_aq0()
-    matches = sorted(list(set(re.findall(">([\d]{12})</a", text))))
+    matches = sorted(list(set(re.findall(r">([\d]{12})</a", text))))
     return [ datetime.strptime(m, '%Y%m%d%H%M') for m in matches ]
 
 
@@ -204,7 +212,8 @@ def _available_nucaps_conus_aq0(dt=None):
 # Retrieve the obs times for CONUS MetOp-B.
 def _download_nucaps_conus_m01():
     global nucaps_text
-    nucaps_text = urlopen(nucaps_conus_m01_url, cafile=certifi.where()).read().decode('utf-8')
+    context = ssl.create_default_context(cafile=certifi.where())
+    nucaps_text = urlopen(nucaps_conus_m01_url, context=context).read().decode('utf-8')
     return nucaps_text
 
 def _available_nucaps_conus_m01(dt=None):
@@ -220,7 +229,7 @@ def _available_nucaps_conus_m01(dt=None):
             of sounding data on the SPoRT FTP site.
     '''
     text = _download_nucaps_conus_m01()
-    matches = sorted(list(set(re.findall(">([\d]{12})</a", text))))
+    matches = sorted(list(set(re.findall(r">([\d]{12})</a", text))))
     return [ datetime.strptime(m, '%Y%m%d%H%M') for m in matches ]
 
 
@@ -228,7 +237,8 @@ def _available_nucaps_conus_m01(dt=None):
 # Retrieve the obs times for CONUS MetOp-A.
 def _download_nucaps_conus_m02():
     global nucaps_text
-    nucaps_text = urlopen(nucaps_conus_m02_url, cafile=certifi.where()).read().decode('utf-8')
+    context = ssl.create_default_context(cafile=certifi.where())
+    nucaps_text = urlopen(nucaps_conus_m02_url, context=context).read().decode('utf-8')
     return nucaps_text
 
 def _available_nucaps_conus_m02(dt=None):
@@ -244,7 +254,7 @@ def _available_nucaps_conus_m02(dt=None):
             of sounding data on the SPoRT FTP site.
     '''
     text = _download_nucaps_conus_m02()
-    matches = sorted(list(set(re.findall(">([\d]{12})</a", text))))
+    matches = sorted(list(set(re.findall(r">([\d]{12})</a", text))))
     return [ datetime.strptime(m, '%Y%m%d%H%M') for m in matches ]
 
 
@@ -252,7 +262,8 @@ def _available_nucaps_conus_m02(dt=None):
 # Retrieve the obs times for CONUS MetOp-C.
 def _download_nucaps_conus_m03():
     global nucaps_text
-    nucaps_text = urlopen(nucaps_conus_m03_url, cafile=certifi.where()).read().decode('utf-8')
+    context = ssl.create_default_context(cafile=certifi.where())
+    nucaps_text = urlopen(nucaps_conus_m03_url, context=context).read().decode('utf-8')
     return nucaps_text
 
 def _available_nucaps_conus_m03(dt=None):
@@ -268,7 +279,7 @@ def _available_nucaps_conus_m03(dt=None):
             of sounding data on the SPoRT FTP site.
     '''
     text = _download_nucaps_conus_m03()
-    matches = sorted(list(set(re.findall(">([\d]{12})</a", text))))
+    matches = sorted(list(set(re.findall(r">([\d]{12})</a", text))))
     return [ datetime.strptime(m, '%Y%m%d%H%M') for m in matches ]
 
 
@@ -276,7 +287,8 @@ def _available_nucaps_conus_m03(dt=None):
 # Retrieve the obs times for Caribbean NOAA-20.
 def _download_nucaps_caribbean_j01():
     global nucaps_text
-    nucaps_text = urlopen(nucaps_caribbean_j01_url, cafile=certifi.where()).read().decode('utf-8')
+    context = ssl.create_default_context(cafile=certifi.where())
+    nucaps_text = urlopen(nucaps_caribbean_j01_url, context=context).read().decode('utf-8')
     return nucaps_text
 
 def _available_nucaps_caribbean_j01(dt=None):
@@ -292,7 +304,7 @@ def _available_nucaps_caribbean_j01(dt=None):
             of sounding data on the SPoRT FTP site.
     '''
     text = _download_nucaps_caribbean_j01()
-    matches = sorted(list(set(re.findall(">([\d]{12})</a", text))))
+    matches = sorted(list(set(re.findall(r">([\d]{12})</a", text))))
     return [ datetime.strptime(m, '%Y%m%d%H%M') for m in matches ]
 
 
@@ -300,7 +312,8 @@ def _available_nucaps_caribbean_j01(dt=None):
 # Retrieve the obs times for Alaska NOAA-20.
 def _download_nucaps_alaska_j01():
     global nucaps_text
-    nucaps_text = urlopen(nucaps_alaska_j01_url, cafile=certifi.where()).read().decode('utf-8')
+    context = ssl.create_default_context(cafile=certifi.where())
+    nucaps_text = urlopen(nucaps_alaska_j01_url, context=context).read().decode('utf-8')
     return nucaps_text
 
 def _available_nucaps_alaska_j01(dt=None):
@@ -316,7 +329,7 @@ def _available_nucaps_alaska_j01(dt=None):
             of sounding data on the SPoRT FTP site.
     '''
     text = _download_nucaps_alaska_j01()
-    matches = sorted(list(set(re.findall(">([\d]{12})</a", text))))
+    matches = sorted(list(set(re.findall(r">([\d]{12})</a", text))))
     return [ datetime.strptime(m, '%Y%m%d%H%M') for m in matches ]
 
 
@@ -400,7 +413,8 @@ def _download_psu():
     global psu_time, psu_text
     now = datetime.utcnow()
     if psu_time is None or psu_time < now - cache_len:
-        url_obj = urlopen(psu_base_url, cafile=certifi.where())
+        context = ssl.create_default_context(cafile=certifi.where())
+        url_obj = urlopen(psu_base_url, context=context)
         psu_text = url_obj.read().decode('utf-8')
 
         psu_time = now
@@ -426,10 +440,11 @@ def _availableat_psu(model, dt):
 
     cycle = dt.hour
     url = "%s%s/%02d/" % (psu_base_url, model.upper(), cycle)
-    url_obj = urlopen(url, cafile=certifi.where())
+    context = ssl.create_default_context(cafile=certifi.where())
+    url_obj = urlopen(url, context=context)
     text = url_obj.read().decode('utf-8')
 
-    stns = re.findall("%s_(.+)\.buf" % _repl[model], text)
+    stns = re.findall(r"%s_(.+)\.buf" % _repl[model], text)
     return stns
 
 def _available_psu(model, dt=None):
@@ -455,7 +470,7 @@ def _available_psu(model, dt=None):
     if model == '4km nam': model = 'nam4km'
 
     psu_text = _download_psu()
-    latest = re.search("%s\.([\d]{12})\.done" % model, psu_text).groups(0)[0]
+    latest = re.search(r"%s\.([\d]{12})\.done" % model, psu_text).groups(0)[0]
     dt = datetime.strptime(latest, "%Y%m%d%H%M")
     return [ dt ]
 
@@ -479,7 +494,8 @@ def _download_iem():
     global iem_time, iem_text
     now = datetime.utcnow()
     if iem_time is None or iem_time < now - cache_len:
-        iem_obj = urlopen(iem_base_url, cafile=certifi.where())
+        context = ssl.create_default_context(cafile=certifi.where())
+        iem_obj = urlopen(iem_base_url, context=context)
         psu_text = url_obj.read().decode('utf-8')
         iem_time = now
 
@@ -504,10 +520,11 @@ def _availableat_iem(model, dt):
 
     cycle = dt.hour
     url = dt.strftime(iem_base_url).replace("MODEL", model.lower())
-    url_obj = urlopen(url, cafile=certifi.where())
+    context = ssl.create_default_context(cafile=certifi.where())
+    url_obj = urlopen(url, context=context)
     text = url_obj.read().decode('utf-8')
 
-    stns = re.findall("%s_(.+)\.buf\">" % _repl[model], text)
+    stns = re.findall(r"%s_(.+)\.buf\">" % _repl[model], text)
 
     return stns
 
@@ -582,26 +599,29 @@ pecan_base_url = 'http://weather.ou.edu/~map/real_time_data/PECAN/'
 #http://weather.ou.edu/~map/real_time_data/PECAN/2015061112/soundings/TOP_2015061113.txt
 
 def _available_oupecan(**kwargs):
-    text = urlopen(pecan_base_url, cafile=certifi.where()).read().decode('utf-8')
-    matches = sorted(list(set(re.findall("([\d]{10})", text))))
+    context = ssl.create_default_context(cafile=certifi.where())
+    text = urlopen(pecan_base_url, context=context).read().decode('utf-8')
+    matches = sorted(list(set(re.findall(r"([\d]{10})", text))))
     return [ datetime.strptime(m, "%Y%m%d%H") for m in matches ]
 
 def _availableat_oupecan(dt):
     dt_string = datetime.strftime(dt, '%Y%m%d%H')
     url = "%s%s/soundings/" % (pecan_base_url, dt_string)
-    url_obj = urlopen(url, cafile=certifi.where())
+    context = ssl.create_default_context(cafile=certifi.where())
+    url_obj = urlopen(url, context=context)
     text = url_obj.read().decode('utf-8')
     dt_string = datetime.strftime(dt, '%Y%m%d%H')
-    stns = re.findall("([\w]{3})_%s.txt" % dt_string, text)
+    stns = re.findall(r"([\w]{3})_%s.txt" % dt_string, text)
     return np.unique(stns)
 
 ## NCAR ENSEMBLE CODE
 ncarens_base_url = 'http://sharp.weather.ou.edu/soundings/ncarens/'
 
 def _available_ncarens(dt=None):
-    text = urlopen(ncarens_base_url, cafile=certifi.where()).read().decode('utf-8')
+    context = ssl.create_default_context(cafile=certifi.where())
+    text = urlopen(ncarens_base_url, context=context).read().decode('utf-8')
 
-    matches = sorted(list(set(re.findall("([\d]{8}_[\d]{2})", text))))
+    matches = sorted(list(set(re.findall(r"([\d]{8}_[\d]{2})", text))))
     return [ datetime.strptime(m, '%Y%m%d_%H') for m in matches ]
 
 def _availableat_ncarens(dt):
@@ -610,8 +630,8 @@ def _availableat_ncarens(dt):
     url_obj = urlopen(url, cafile=certifi.where())
     text = url_obj.read().decode('utf-8')
 
-    stns = re.findall("(N[\w]{2}.[\w]{2}W.[\w]{2,3}.[\w]{2}).txt", text)
-    stns2 = re.findall("([\w]{3}).txt", text)
+    stns = re.findall(r"(N[\w]{2}.[\w]{2}W.[\w]{2,3}.[\w]{2}).txt", text)
+    stns2 = re.findall(r"([\w]{3}).txt", text)
     return stns + stns2
 
 def _available_nssl(ens=False):

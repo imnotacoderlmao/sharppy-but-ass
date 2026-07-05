@@ -115,8 +115,8 @@ class backgroundSlinky(QtWidgets.QFrame):
         '''
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         ## draw the frame
         self.draw_axes(qp)
         self.draw_frame(qp)
@@ -274,8 +274,8 @@ class plotSlinky(backgroundSlinky):
 
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         self.plotSlinky(qp)
         self.plotSMV(qp)
         self.plotTilt(qp)

@@ -67,8 +67,8 @@ class backgroundENS(QtWidgets.QFrame):
         ## initialize a painter object and draw the frame
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         self.draw_frame(qp)
         qp.end()
 
@@ -278,8 +278,8 @@ class plotENS(backgroundENS):
         ## create a new painter obkect
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
 
         cur_dt = self.prof_collections[self.pc_idx].getCurrentDate()
         bc_idx = 0

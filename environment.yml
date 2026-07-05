@@ -4,9 +4,9 @@ channels:
   - conda-forge/label/testing
   - anaconda
 dependencies:
-  - python==3.7
   - numpy>=1.15
-  - pyside2>=5.12
+  - numba>=0.56
+  - pyside6
   - qtpy
   - sphinx
   - pytest

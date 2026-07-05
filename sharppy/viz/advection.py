@@ -56,8 +56,8 @@ class backgroundAdvection(QtWidgets.QFrame):
         ## initialize a QPainter object
         qp = QtGui.QPainter()
         qp.begin(self.plotBitMap)
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         ## draw the background frame
         self.draw_frame(qp)
         ## draw the vertical ticks for wind speed

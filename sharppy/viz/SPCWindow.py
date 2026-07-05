@@ -828,8 +828,8 @@ class SPCWindow(QMainWindow):
         self.focus_mapper = QSignalMapper(self)
         self.remove_mapper = QSignalMapper(self)
 
-        self.focus_mapper.mapped[str].connect(self.spc_widget.setProfileCollection)
-        self.remove_mapper.mapped[str].connect(self.rmProfileCollection)
+        self.focus_mapper.mappedString.connect(self.spc_widget.setProfileCollection)
+        self.remove_mapper.mappedString.connect(self.rmProfileCollection)
 
     def createProfileMenu(self, prof_col):
         logging.debug("Creating the SPCWindow Profile Menu.")

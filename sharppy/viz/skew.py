@@ -9,7 +9,7 @@ from qtpy.QtGui import *
 from qtpy.QtCore import *
 from qtpy.QtWidgets import *
 from qtpy.QtOpenGL import *
-from sutils.utils import total_seconds
+from datetime import timedelta
 import logging
 from datetime import datetime, timedelta
 import os
@@ -88,8 +88,8 @@ class backgroundSkewT(QWidget):
         qp.scale(self.scale, self.scale)
         qp.translate(-self.originx, -self.originy)
 
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         for t in np.arange(self.bltmpc-100, self.brtmpc+self.dt, self.dt):
             self.draw_isotherm(t, qp)
         #for tw in range(self.bltmpc, self.brtmpc, 10): self.draw_moist_adiabat(tw, qp)
@@ -118,7 +118,7 @@ class backgroundSkewT(QWidget):
 
         # From map
         max_speed = 100.
-        delta = max(min(-e.delta(), max_speed), -max_speed)
+        delta = max(min(-e.angleDelta().y(), max_speed), -max_speed)
         scale_fac = 10 ** (delta / 1000.)
 
         if self.scale * scale_fac > 1.0:
@@ -524,7 +524,7 @@ class plotSkewT(backgroundSkewT):
         if model == "Archive":
             fhour_str = ""
             if not prof_coll.getMeta('observed'):
-                fhour = int(total_seconds(date - prof_coll.getMeta('base_time')) / 3600)
+                fhour = int(timedelta.total_seconds(date - prof_coll.getMeta('base_time')) / 3600)
                 fhour_str = " F%03d" % fhour
             plot_title += "  (User Selected" + fhour_str + modified_str + ")"
         elif model == "Analog":
@@ -540,7 +540,7 @@ class plotSkewT(backgroundSkewT):
             if ensemble:
                 mem_string = " " + prof_coll.getHighlightedMemberName()
 
-            fhour = int(total_seconds(date - prof_coll.getMeta('base_time')) / 3600)
+            fhour = int(timedelta.total_seconds(date - prof_coll.getMeta('base_time')) / 3600)
             plot_title += "  (" + run + "  " + model + mem_string + "  " + ("F%03d" % fhour) + modified_str + ")"
         return plot_title
 
@@ -955,8 +955,8 @@ class plotSkewT(backgroundSkewT):
         qp.begin(self.plotBitMap)
         qp.setClipRect(self.clip)
 
-        qp.setRenderHint(qp.Antialiasing)
-        qp.setRenderHint(qp.TextAntialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.TextAntialiasing)
         self.drawTitles(qp)
 
         bg_color_idx = 0
@@ -1047,13 +1047,13 @@ class plotSkewT(backgroundSkewT):
         if self.prof.ctf_low is not None:
             self.draw_cloud_top_pressure_levels(qp)
 
-        qp.setRenderHint(qp.Antialiasing, False)
+        qp.setRenderHint(qp.RenderHint.Antialiasing, False)
         try:
             self.drawBarbs(self.prof, qp)
         except Exception as e:
             logging.exception(e)
             logging.debug("Couldn't draw wind barbs in skew.py")
-        qp.setRenderHint(qp.Antialiasing)
+        qp.setRenderHint(qp.RenderHint.Antialiasing)
 
         self.draw_effective_layer(qp)
         if self.plot_omega:
