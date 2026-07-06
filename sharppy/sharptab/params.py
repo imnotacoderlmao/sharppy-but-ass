@@ -4,6 +4,7 @@ from __future__ import division
 import numpy as np
 import numpy.ma as ma
 from sharppy.sharptab import interp, utils, thermo, winds
+from sharppy.sharptab import fast_thermo as _fast
 from sharppy.sharptab.constants import *
 import os
 
@@ -30,7 +31,7 @@ __all__ += ['lapse_rate', 'max_lapse_rate', 'most_unstable_level', 'parcelx', 'b
 __all__ += ['bunkers_storm_motion', 'effective_inflow_layer']
 __all__ += ['convective_temp', 'esp', 'pbl_top', 'precip_eff', 'dcape', 'sig_severe']
 __all__ += ['dgz', 'ship', 'stp_cin', 'stp_fixed', 'scp', 'mmp', 'wndg', 'sherb', 'tei', 'cape']
-__all__ += ['mburst', 'dcp', 'ehi', 'sweat', 'hgz', 'lhp', 'integrate_parcel']
+__all__ += ['mburst', 'dcp', 'ehi', 'sweat', 'hgz', 'lhp']
 
 def _plain_level_arrays(prof):
     '''
@@ -77,6 +78,33 @@ def _plain_level_arrays(prof):
     if cache is not None:
         cache['pres_tmpc_hght_vtmp'] = entry
     return entry
+
+
+def _plain_dwpc_array(prof):
+    '''
+    Same idea as _plain_level_arrays, for prof.dwpc alone -- used by
+    effective_inflow_layer()/_binary_cape(), which search level-by-level
+    calling cape(prof, pres=prof.pres[i], tmpc=prof.tmpc[i],
+    dwpc=prof.dwpc[i]) and were still indexing the MaskedArray directly.
+    '''
+    cache = prof.__dict__.get('_plain_level_array_cache')
+    if cache is None:
+        cache = {}
+        try:
+            prof._plain_level_array_cache = cache
+        except Exception:
+            cache = None
+
+    if cache is not None:
+        entry = cache.get('dwpc')
+        if entry is not None:
+            return entry
+
+    dwpc_p = np.ascontiguousarray(ma.filled(prof.dwpc, np.nan), dtype=np.float64)
+
+    if cache is not None:
+        cache['dwpc'] = dwpc_p
+    return dwpc_p
 
 class DefineParcel(object):
     '''
@@ -1542,7 +1570,38 @@ def parcelTraj(prof, parcel, smu=None, smv=None):
     theta = np.degrees(np.arctan2(pos_vector[-1][2],r))
     return pos_vector, theta
 
-def cape(prof, pbot=None, ptop=None, dp=-1, new_lifter=False, trunc=False, **kwargs):
+def _get_lplvals(prof, flag, kwargs):
+    '''
+    Equivalent to `kwargs.get('lplvals', DefineParcel(prof, flag))`, but
+    without DefineParcel's eager-default-evaluation cost when it's not
+    needed. `dict.get(key, default)` always evaluates `default` even when
+    `key` is present -- so the original spelling constructed a full
+    DefineParcel (whose flag=5 "user parcel" path calls
+    interp.temp/interp.dwpt to fill in tmpc/dwpc defaults) on every call,
+    including callers like effective_inflow_layer's per-level search loop
+    that pass `pres`/`tmpc`/`dwpc` explicitly and never look at
+    `lplvals.{pres,tmpc,dwpc}` again (cape()'s next 3 lines immediately
+    prefer the explicit kwargs over lplvals' values). That's ~80 wasted
+    DefineParcel constructions (160 wasted interp calls) per profile
+    build. Skip it in exactly that case; every other call site (the
+    normal flag=1/2/3/4 parcelx() calls, or any partial-kwarg usage)
+    behaves identically to before.
+    '''
+    if 'lplvals' in kwargs:
+        return kwargs['lplvals']
+    if 'pres' in kwargs and 'tmpc' in kwargs and 'dwpc' in kwargs:
+        lplvals = DefineParcel.__new__(DefineParcel)
+        lplvals.flag = flag
+        lplvals.presval = kwargs['pres']
+        lplvals.pres = kwargs['pres']
+        lplvals.tmpc = kwargs['tmpc']
+        lplvals.dwpc = kwargs['dwpc']
+        lplvals.desc = ('%.2f hPa Parcel' % kwargs['pres']) if utils.QC(kwargs['pres']) else 'User Parcel'
+        return lplvals
+    return DefineParcel(prof, flag)
+
+
+def cape(prof, pbot=None, ptop=None, dp=-1, trunc=False, **kwargs):
     '''
         Lifts the specified parcel, calculates various levels and parameters from
         the profile object. Only B+/B- are calculated based on the specified layer.
@@ -1594,8 +1653,8 @@ def cape(prof, pbot=None, ptop=None, dp=-1, new_lifter=False, trunc=False, **kwa
     '''
     flag = kwargs.get('flag', 5)
     pcl = Parcel(pbot=pbot, ptop=ptop)
-    pcl.lplvals = kwargs.get('lplvals', DefineParcel(prof, flag))
-    if prof.pres.compressed().shape[0] < 1: return pcl
+    pcl.lplvals = _get_lplvals(prof, flag, kwargs)
+    if prof.pres.count() < 1: return pcl
 
     # Variables
     pres = kwargs.get('pres', pcl.lplvals.pres)
@@ -1688,89 +1747,53 @@ def cape(prof, pbot=None, ptop=None, dp=-1, new_lifter=False, trunc=False, **kwa
     tp1 = tp2
     lyre = 0
 
-    if new_lifter:
-        env_temp = prof.vtmp[lptr:]
-        try:
-            keep = ~env_temp.mask * np.ones(env_temp.shape, dtype=bool)
-        except AttributeError:
-            keep = np.ones(env_temp.shape, dtype=bool)
+    pres_p, tmpc_p, hght_p, vtmp_p = _plain_level_arrays(prof)
 
-        env_temp = np.append(te1, env_temp[keep])
-        env_pres = np.append(pe1, prof.pres[lptr:][keep])
-        env_hght = np.append(h1, prof.hght[lptr:][keep])
-        pcl_temp = integrate_parcel(env_pres, tp1)
-        tdef = (thermo.virtemp(env_pres, pcl_temp, pcl_temp) - env_temp) / thermo.ctok(env_temp)
-        lyre = G * (tdef[1:] + tdef[:-1]) / 2 * (env_hght[1:] - env_hght[:-1])
+    # Moist-adiabatic lift is path-independent: the temperature at any
+    # pressure along a moist adiabat depends only on the adiabat's
+    # defining theta-w (here "thetam"), computed once at the LCL,
+    # not on however many intermediate levels you'd otherwise
+    # recompute it from sequentially. So, derive thetam once, then
+    # solve satlift for every remaining level in one vectorized call
+    # instead of the old per-level recomputation loop.
+    thta_lcl = thermo.theta(pe1, tp1, 1000.)
+    thetam = thta_lcl - thermo.wobf(thta_lcl) + thermo.wobf(tp1)
+    tp_precomputed = np.full(pres_p.shape[0], np.nan, dtype=np.float64)
+    target_pres = pres_p[int(lptr):]
+    tp_precomputed[int(lptr):] = thermo.satlift(target_pres, np.full_like(target_pres, thetam))
 
-        totp = lyre[lyre > 0].sum()
-        neg_layers = (lyre <= 0) & (env_pres[1:] > 500)
-        if np.any(neg_layers):
-            totn += lyre[neg_layers].sum()
+    totp_add, totn_add, lyre, pe1_f, h1_f, te1_f, tp1_f, truncated = _fast.cape_lift_loop(
+        pres_p, tmpc_p, hght_p, vtmp_p, tp_precomputed, int(lptr), int(uptr),
+        float(pe1), float(h1), float(te1), float(tp1), bool(trunc))
+    totp += totp_add
+    totn += totn_add
 
-        if lyre[-1] > 0:
-            pcl.bplus = totp - lyre[-1]
+    if truncated:
+        pe3, h3, te3, tp3 = pe1_f, h1_f, te1_f, tp1_f
+        lyrf = lyre
+        pe2 = pe1_f  # the level the loop stopped at
+        if lyrf > 0:
+            pcl.bplus = totp - lyrf
             pcl.bminus = totn
         else:
             pcl.bplus = totp
-            if env_pres[-1] > 500.:
-                pcl.bminus = totn + lyre[-1]
-            else:
-                pcl.bminus = totn
-
+            if pe2 > 500.: pcl.bminus = totn + lyrf
+            else: pcl.bminus = totn
+        pe2 = ptop
+        h2 = interp.hght(prof, pe2)
+        te2 = interp.vtmp(prof, pe2)
+        tp2 = thermo.wetlift(pe3, tp3, pe2)
+        tdef3 = (thermo.virtemp(pe3, tp3, tp3) - te3) / thermo.ctok(te3)
+        tdef2 = (thermo.virtemp(pe2, tp2, tp2) - te2) / thermo.ctok(te2)
+        lyrf = G * (tdef3 + tdef2) / 2. * (h2 - h3)
+        if lyrf > 0: pcl.bplus += lyrf
+        else:
+            if pe2 > 500.: pcl.bminus += lyrf
         if pcl.bplus == 0: pcl.bminus = 0.
-    else:
-        pres_p, tmpc_p, hght_p, vtmp_p = _plain_level_arrays(prof)
-        n_levels = pres_p.shape[0]
-        for i in range(lptr, n_levels):
-            tmpc_i = tmpc_p[i]
-            if tmpc_i != tmpc_i:  # NaN check (was: not utils.QC(prof.tmpc[i]))
-                continue
-            pe2 = pres_p[i]
-            h2 = hght_p[i]
-            te2 = vtmp_p[i]
-            tp2 = thermo.wetlift(pe1, tp1, pe2)
-            tdef1 = (thermo.virtemp(pe1, tp1, tp1) - te1) / thermo.ctok(te1)
-            tdef2 = (thermo.virtemp(pe2, tp2, tp2) - te2) / thermo.ctok(te2)
-            lyre = G * (tdef1 + tdef2) / 2. * (h2 - h1)
-
-            # Add layer energy to total positive if lyre > 0
-            if lyre > 0: totp += lyre
-            # Add layer energy to total negative if lyre < 0, only up to EL
-            else:
-                if pe2 > 500.: totn += lyre
-
-            pe1 = pe2
-            h1 = h2
-            te1 = te2
-            tp1 = tp2
-            # Is this the top of the specified layer
-            # Because CIN is only computed below 500 mb, we can cut off additional lifting when
-            # computing convective temperature!
-            if (trunc is True and pe2 <= 500) or (i >= uptr and not utils.QC(pcl.bplus)):
-                pe3 = pe1
-                h3 = h1
-                te3 = te1
-                tp3 = tp1
-                lyrf = lyre
-                if lyrf > 0:
-                    pcl.bplus = totp - lyrf
-                    pcl.bminus = totn
-                else:
-                    pcl.bplus = totp
-                    if pe2 > 500.: pcl.bminus = totn + lyrf
-                    else: pcl.bminus = totn
-                pe2 = ptop
-                h2 = interp.hght(prof, pe2)
-                te2 = interp.vtmp(prof, pe2)
-                tp2 = thermo.wetlift(pe3, tp3, pe2)
-                tdef3 = (thermo.virtemp(pe3, tp3, tp3) - te3) / thermo.ctok(te3)
-                tdef2 = (thermo.virtemp(pe2, tp2, tp2) - te2) / thermo.ctok(te2)
-                lyrf = G * (tdef3 + tdef2) / 2. * (h2 - h3)
-                if lyrf > 0: pcl.bplus += lyrf
-                else:
-                    if pe2 > 500.: pcl.bminus += lyrf
-                if pcl.bplus == 0: pcl.bminus = 0.
-                break
+    # else: loop ran off the end of the profile without ever reaching
+    # the truncation condition. pcl.bplus/bminus stay masked, same
+    # as the original Python loop completing without ever hitting the
+    # "if (trunc ...) or (i >= uptr ...)" branch.
     return pcl
 
 
@@ -1824,8 +1847,8 @@ def parcelx(prof, pbot=None, ptop=None, dp=-1, **kwargs):
         '''
     flag = kwargs.get('flag', 5)
     pcl = Parcel(pbot=pbot, ptop=ptop)
-    pcl.lplvals = kwargs.get('lplvals', DefineParcel(prof, flag))
-    if prof.pres.compressed().shape[0] < 1: return pcl
+    pcl.lplvals = _get_lplvals(prof, flag, kwargs)
+    if prof.pres.count() < 1: return pcl
 
     # Variables
     pres = kwargs.get('pres', pcl.lplvals.pres)
@@ -1946,17 +1969,36 @@ def parcelx(prof, pbot=None, ptop=None, dp=-1, **kwargs):
     lyre = 0
     lyrlast = 0
 
+    # Same path-independence argument as cape()'s main loop: derive the
+    # moist adiabat's defining theta-w once here (pe1, tp1 are on it),
+    # then solve for the parcel's temperature at every remaining level in
+    # one vectorized call instead of recomputing it level-by-level below.
+    thta_lcl_px = thermo.theta(pe1, tp1, 1000.)
+    thetam_px = thta_lcl_px - thermo.wobf(thta_lcl_px) + thermo.wobf(tp1)
+
     iter_ranges = np.arange(lptr, prof.pres.shape[0])
-    ttraces = ma.zeros(len(iter_ranges))
-    ptraces = ma.zeros(len(iter_ranges))
-    ttraces[:] = ptraces[:] = ma.masked
+    ttraces = np.full(len(iter_ranges), np.nan, dtype=np.float64)
+    ptraces = np.full(len(iter_ranges), np.nan, dtype=np.float64)
+    pres_p, tmpc_p, hght_p, vtmp_p = _plain_level_arrays(prof)
+    tp_precomputed_px = np.full(pres_p.shape[0], np.nan, dtype=np.float64)
+    target_pres_px = pres_p[lptr:]
+    tp_precomputed_px[lptr:] = thermo.satlift(target_pres_px, np.full_like(target_pres_px, thetam_px))
     for i in iter_ranges:
-        if not utils.QC(prof.tmpc[i]): continue
-        pe2 = prof.pres[i]
-        h2 = prof.hght[i]
-        te2 = prof.vtmp[i]
+        tmpc_i = tmpc_p[i]
+        if tmpc_i != tmpc_i:  # NaN check (was: not utils.QC(prof.tmpc[i]))
+            continue
+        pe2 = pres_p[i]
+        level_pres_i = pe2  # pe2 gets reused as scratch by the LFC/EL/MPL
+                             # blocks below (pe2 = pe1 / pe2 = pelast), so the
+                             # li5/li3 checks further down need this separate,
+                             # never-reassigned copy of "this level's actual
+                             # pressure" same thing prof.pres[i] gave them
+                             # in the original (a fresh masked-array read each
+                             # time, unaffected by pe2's local reassignments).
+        h2 = hght_p[i]
+        te2 = vtmp_p[i]
         #te2 = thermo.virtemp(prof.pres[i], prof.tmpc[i], prof.dwpc[i])
-        tp2 = thermo.wetlift(pe1, tp1, pe2)
+        tp2 = tp_precomputed_px[i]
         tdef1 = (thermo.virtemp(pe1, tp1, tp1) - te1) / thermo.ctok(te1)
         tdef2 = (thermo.virtemp(pe2, tp2, tp2) - te2) / thermo.ctok(te2)
 
@@ -2225,13 +2267,13 @@ def parcelx(prof, pbot=None, ptop=None, dp=-1, **kwargs):
             pcl.mplhght = interp.to_agl(prof, interp.hght(prof, pe2))
 
         # 500 hPa Lifted Index
-        if prof.pres[i] <= 500. and not utils.QC(pcl.li5):
+        if level_pres_i <= 500. and not utils.QC(pcl.li5):
             a = interp.vtmp(prof, 500.)
             b = thermo.wetlift(pe1, tp1, 500.)
             pcl.li5 = a - thermo.virtemp(500, b, b)
 
         # 300 hPa Lifted Index
-        if prof.pres[i] <= 300. and not utils.QC(pcl.li3):
+        if level_pres_i <= 300. and not utils.QC(pcl.li3):
             a = interp.vtmp(prof, 300.)
             b = thermo.wetlift(pe1, tp1, 300.)
             pcl.li3 = a - thermo.virtemp(300, b, b)
@@ -2245,8 +2287,12 @@ def parcelx(prof, pbot=None, ptop=None, dp=-1, **kwargs):
 
     # Save params
     if np.floor(pcl.bplus) == 0: pcl.bminus = 0.
-    pcl.ptrace = ma.concatenate((ptrace, ptraces))
-    pcl.ttrace = ma.concatenate((ttrace, ttraces))
+    # ttraces/ptraces were built as plain float64 arrays with NaN standing
+    # in for "this level was skipped" (see the loop above); wrap them back
+    # into masked arrays here, once, instead of doing masked array
+    # item-assignment on every iteration of that loop.
+    pcl.ptrace = ma.concatenate((ptrace, ma.masked_invalid(ptraces)))
+    pcl.ttrace = ma.concatenate((ttrace, ma.masked_invalid(ttraces)))
 
     # Find minimum buoyancy from Trier et al. 2014, Part 1
     idx = np.ma.where(pcl.ptrace >= 500.)[0]
@@ -2365,11 +2411,25 @@ def effective_inflow_layer(prof, ecape=100, ecinh=-250, **kwargs):
     ptop = ma.masked
     if mucape != 0:
         if mucape >= ecape and mucinh > ecinh:
+            pres_p, tmpc_p, hght_p, vtmp_p = _plain_level_arrays(prof)
+            dwpc_p = _plain_dwpc_array(prof)
             # Begin at surface and search upward for effective surface
             for i in range(prof.sfc, prof.top):
-                pcl = cape(prof, pres=prof.pres[i], tmpc=prof.tmpc[i], dwpc=prof.dwpc[i])
+                # cape()'s scalar thermo path assumes non-NaN input (it's
+                # numba-compiled with fastmath=True, which is only valid
+                # under a no-NaN assumption. feeding it NaN directly is
+                # undefined behavior, not a graceful "skip", unlike
+                # ma.masked which routes through the original array-aware
+                # code and safely returns pcl with bplus/bminus masked).
+                # So: pass ma.masked here exactly where the original
+                # MaskedArray read would have been masked, instead of the
+                # plain (possibly-NaN) mirror value.
+                p_i = pres_p[i] if tmpc_p[i] == tmpc_p[i] else ma.masked
+                t_i = tmpc_p[i] if tmpc_p[i] == tmpc_p[i] else ma.masked
+                d_i = dwpc_p[i] if dwpc_p[i] == dwpc_p[i] else ma.masked
+                pcl = cape(prof, pres=p_i, tmpc=t_i, dwpc=d_i)
                 if pcl.bplus >= ecape and pcl.bminus > ecinh:
-                    pbot = prof.pres[i]
+                    pbot = pres_p[i]
                     break
 
             if not utils.QC(pbot):
@@ -2378,9 +2438,17 @@ def effective_inflow_layer(prof, ecape=100, ecinh=-250, **kwargs):
             bptr = i
             # Keep searching upward for the effective top
             for i in range(bptr+1, prof.top):
-                if not prof.dwpc[i] or not prof.tmpc[i]:
+                # Precisely mirrors the original `not prof.dwpc[i] or not
+                # prof.tmpc[i]` truthiness check: that skipped both masked
+                # values (`not ma.masked` is True) *and* exact 0.0 (`not 0.0`
+                # is also True). a pre-existing quirk, not something to
+                # silently fix here. `not float('nan')` is False, so a
+                # plain NaN-check alone would NOT reproduce the same
+                # behavior; both conditions are spelled out explicitly.
+                d, t = dwpc_p[i], tmpc_p[i]
+                if d == 0. or d != d or t == 0. or t != t:
                     continue
-                pcl = cape(prof, pres=prof.pres[i], tmpc=prof.tmpc[i], dwpc=prof.dwpc[i])
+                pcl = cape(prof, pres=pres_p[i], tmpc=tmpc_p[i], dwpc=dwpc_p[i])
                 if pcl.bplus < ecape or pcl.bminus <= ecinh: #Is this a potential "top"?
                     j = 1
                     while not utils.QC(prof.dwpc[i-j]) and not utils.QC(prof.tmpc[i-j]):
@@ -2968,6 +3036,16 @@ def dcape(prof):
     tote = 0
     lyre = 0
 
+    # Same path-independence argument as cape()/parcelx()'s main loops:
+    # derive the moist adiabat's defining theta-w once here (the downdraft
+    # parcel's starting point), then solve for its temperature at every
+    # level it will pass through on the way down in one vectorized call.
+    thta_dc = thermo.theta(pe1, tp1, 1000.)
+    thetam_dc = thta_dc - thermo.wobf(thta_dc) + thermo.wobf(tp1)
+    tp_precomputed_dc = np.full(pres.shape[0], np.nan, dtype=np.float64)
+    target_pres_dc = pres[0:uptr+1]
+    tp_precomputed_dc[0:uptr+1] = thermo.satlift(target_pres_dc, np.full_like(target_pres_dc, thetam_dc))
+
     # To keep track of the parcel trace from the downdraft
     ttrace = [tp1]
     ptrace = [upper]
@@ -2982,7 +3060,7 @@ def dcape(prof):
         pe2 = pres[i]
         te2 = tmpc[i]
         h2 = hght[i]
-        tp2 = thermo.wetlift(pe1, tp1, pe2)
+        tp2 = tp_precomputed_dc[i]
 
         if utils.QC(te1) and utils.QC(te2):
             tdef1 = (tp1 - te1) / (thermo.ctok(te1))

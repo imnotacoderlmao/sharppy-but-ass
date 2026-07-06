@@ -96,9 +96,17 @@ def _interp_cached(prof, key, query, x, y, log_query=False, log_result=False):
         return val
 
     # Array-query path: keep the original masked-array-returning contract.
-    q = ma.log10(query) if log_query else query
+    # np.arange(...)-built query arrays (the common case, e.g.
+    # mean_thetae's `p = np.arange(pbot, ptop+dp, dp)`, called ~200 or more
+    # times per dcape() call) are plain ndarrays, not MaskedArrays, using
+    # ma.log10 on those pays masked-array construction overhead for
+    # nothing. Only fall back to ma.log10 if query is genuinely masked.
+    if log_query:
+        q = ma.log10(query) if isinstance(query, ma.MaskedArray) else np.log10(query)
+    else:
+        q = query
     field_intrp = np.interp(q, x_valid, y_valid, left=np.nan, right=np.nan)
-    field_intrp = ma.where(np.isnan(field_intrp), ma.masked, field_intrp)
+    field_intrp = ma.masked_where(np.isnan(field_intrp), field_intrp)
     if log_result:
         field_intrp = 10 ** field_intrp
     return field_intrp

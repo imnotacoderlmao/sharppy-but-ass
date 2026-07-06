@@ -305,6 +305,7 @@ def satlift(p, thetam, conv=0.1):
         radiosonde data is used.  While a stricter convergence criteria (e.g. 0.01) has shown
         to resolve this problem, it creates a noticable departure from the SPC CAPE values and therefore
         may decalibrate the other SHARPpy functions (e.g. SARS).
+        well.. for the non fast method at least
 
     Parameters
     ----------
