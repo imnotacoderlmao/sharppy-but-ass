@@ -197,6 +197,68 @@ class Profile(object):
 
         return new_prof
 
+    def plain(self, field):
+        '''
+        Return the named Profile field (e.g. 'pres', 'tmpc', 'vtmp',
+        'wdir') as a plain float64 ndarray, with missing/masked values
+        filled as NaN, instead of a numpy.ma.MaskedArray.
+
+        This generalizes what used to be two separate, duplicated caches
+        living in params.py (_plain_level_arrays / _plain_dwpc_array),
+        added there because profiling showed MaskedArray's per-element
+        overhead (__array_finalize__/_update_from on every __getitem__ or
+        elementwise op) dominating hot paths like cape()'s boundary-layer
+        mixing calc and effective_inflow_layer()'s per-level search.
+        Putting the cache on Profile itself means any function, not just
+        the ones in params.py that happened to grow their own copy of this
+        can opt into the fast mirror for a field, computed once per
+        Profile instance (fields don't mutate after __init__ finishes) and
+        reused after that.
+
+        This is *only* an opt-in fast-path mirror. MaskedArray remains the
+        canonical, public storage for self.pres/self.tmpc/etc; nothing
+        about their semantics changes, and every existing masked-value
+        quirk callers rely on (e.g. treating exactly 0.0 the same as
+        missing in a couple of places) keeps working exactly as before,
+        because those call sites keep reading the real masked attribute.
+        Use this method only where a hot loop needs "is this level present,
+        and if so what's the value" and the MaskedArray overhead has
+        actually shown up in profiling.
+
+        Parameters
+        ----------
+        field : str
+            Name of a Profile attribute holding a 1-D array (e.g. 'pres',
+            'hght', 'tmpc', 'dwpc', 'vtmp', 'wdir', 'wspd', 'u', 'v').
+
+        Returns
+        -------
+        numpy.ndarray (float64) or None
+            None if the named attribute itself is None (e.g. self.u/self.v
+            when the profile was built from wdir/wspd instead).
+        '''
+        cache = self.__dict__.get('_plain_field_cache')
+        if cache is None:
+            cache = {}
+            try:
+                self._plain_field_cache = cache
+            except Exception:
+                cache = None
+
+        if cache is not None:
+            arr = cache.get(field)
+            if arr is not None:
+                return arr
+
+        raw = getattr(self, field)
+        if raw is None:
+            return None
+        arr = np.ascontiguousarray(ma.filled(ma.asanyarray(raw, dtype=np.float64), np.nan))
+
+        if cache is not None:
+            cache[field] = arr
+        return arr
+
     def toFile(self, file_name):
         snd_file = open(file_name, 'w')
         def qc(val):

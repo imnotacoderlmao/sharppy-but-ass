@@ -465,6 +465,7 @@ class plotSkewT(backgroundSkewT):
         pcl4.triggered.connect(lambda: self.liftparcellevel(-9999))
         #ag.addAction(pcl4)
         self.parcelmenu.addAction(pcl4)
+        
         self.parcelmenu.setEnabled(False)
         self.popupmenu=QMenu("Cursor Type:")
         ag = QtWidgets.QActionGroup(self, exclusive=True)

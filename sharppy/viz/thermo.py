@@ -2,6 +2,7 @@ import numpy as np
 from qtpy import QtGui, QtCore, QtWidgets
 from qtpy.QtCore import *
 from qtpy.QtGui import *
+from PySide6.QtWidgets import QMessageBox
 import sharppy.sharptab as tab
 from sharppy.sharptab.constants import *
 import datetime
@@ -835,7 +836,7 @@ class SelectParcels(QtWidgets.QWidget):
     #cb.stateChanged.connect(
 
     def changeParcel(self, state):
-        if state == QtCore.Qt.Checked:
+        if state == QtCore.Qt.CheckState.Checked.value:
             self.pcl_count += 1
         else:
             self.pcl_count -= 1
@@ -843,25 +844,25 @@ class SelectParcels(QtWidgets.QWidget):
     def okPushed(self):
         if self.pcl_count > self.max_pcls:
             msgBox = QMessageBox()
-            msgBox.setText("You can only show 4 parcels at a time.\nUnselect some parcels.")
+            msgBox.setText(f"You can only show 4 parcels at a time. You selected {self.pcl_count}.\nUnselect some parcels.")
             msgBox.exec_()
         elif self.pcl_count != self.max_pcls:
             msgBox = QMessageBox()
-            msgBox.setText("You need to select 4 parcels to show.  Select some more.")
+            msgBox.setText(f"You need to select 4 parcels to show. You selected {self.pcl_count}. Please Select some more.")
             msgBox.exec_()
         else:
             self.parcel_types = []
-            if self.sb.isChecked() is True:
+            if self.sb.isChecked():
                 self.parcel_types.append('SFC')
-            if self.ml.isChecked() is True:
+            if self.ml.isChecked():
                 self.parcel_types.append('ML')
-            if self.fcst.isChecked() is True:
+            if self.fcst.isChecked():
                 self.parcel_types.append('FCST')
-            if self.mu.isChecked() is True:
+            if self.mu.isChecked():
                 self.parcel_types.append('MU')
-            if self.eff.isChecked() is True:
+            if self.eff.isChecked():
                 self.parcel_types.append('EFF')
-            if self.usr.isChecked() is True:
+            if self.usr.isChecked():
                 self.parcel_types.append('USER')
 
             self.thermo.pcl_types = self.parcel_types

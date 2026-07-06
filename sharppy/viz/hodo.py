@@ -437,6 +437,24 @@ class plotHodo(backgroundHodo):
         self.popupmenu.addAction(a)
 
         self.popupmenu.addSeparator()
+        ag3 = QtWidgets.QActionGroup(self, exclusive=True)
+
+        rightmove = QAction(self)
+        rightmove.setText("Right Mover SM")
+        rightmove.setCheckable(True)
+        rightmove.setChecked(True)
+        rightmove.triggered.connect(lambda: self.toggle_vector.emit('right'))
+        a = ag2.addAction(rightmove)
+        self.popupmenu.addAction(a)
+
+        leftmove = QAction(self)
+        leftmove.setText("Left Mover SM")
+        leftmove.setCheckable(True)
+        leftmove.triggered.connect(lambda: self.toggle_vector.emit('left'))
+        a = ag2.addAction(leftmove)
+        self.popupmenu.addAction(a)
+
+        self.popupmenu.addSeparator()
 
         reset = QAction(self)
         reset.setText("Reset Hodograph")
@@ -448,20 +466,6 @@ class plotHodo(backgroundHodo):
         reset_vec.triggered.connect(lambda: self.reset_vector.emit())
         self.popupmenu.addAction(reset_vec)
 
-        self.popupmenu.addSeparator()
-
-        rightmove = QAction(self)
-        rightmove.setText("Right Mover SM")
-        rightmove.setCheckable(True)
-        rightmove.setChecked(True)
-        rightmove.triggered.connect(lambda: self.toggle_vector.emit('right'))
-        self.popupmenu.addAction(rightmove)
-
-        leftmove = QAction(self)
-        leftmove.setText("Left Mover SM")
-        leftmove.setCheckable(True)
-        leftmove.triggered.connect(lambda: self.toggle_vector.emit('left'))
-        self.popupmenu.addAction(leftmove)
 
     def addProfileCollection(self, prof_coll):
         self.prof_collections.append(prof_coll)

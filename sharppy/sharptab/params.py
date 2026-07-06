@@ -33,79 +33,6 @@ __all__ += ['convective_temp', 'esp', 'pbl_top', 'precip_eff', 'dcape', 'sig_sev
 __all__ += ['dgz', 'ship', 'stp_cin', 'stp_fixed', 'scp', 'mmp', 'wndg', 'sherb', 'tei', 'cape']
 __all__ += ['mburst', 'dcp', 'ehi', 'sweat', 'hgz', 'lhp']
 
-def _plain_level_arrays(prof):
-    '''
-    Return (pres, tmpc, hght, vtmp) as plain float64 ndarrays with missing
-    values as NaN, instead of numpy.ma.MaskedArray.
-
-    cape()'s main parcel-lifting loop indexes prof.pres[i]/prof.tmpc[i]/
-    prof.hght[i]/prof.vtmp[i] one scalar at a time, hundreds of times per
-    parcel. MaskedArray.__getitem__ isn't a simple array lookup: it goes
-    through _update_from/__array_finalize__/view on every single call,
-    which profiling showed as the single largest cost in a sounding
-    calculation -- well above the interpolation and thermo math it's
-    surrounding. Missing data (-9999.0, see constants.MISSING) is already
-    masked out by Profile.__init__ before this is ever called, so
-    "masked" and "NaN" mean exactly the same thing here; the loop below
-    only needs to skip NaN levels the same way it used to skip masked
-    ones.
-
-    Computed once per Profile instance (arrays don't mutate after
-    Profile.__init__ finishes, see profile.py) and cached on the
-    profile object itself, so repeat calls (sfc/ml/mu/fcst parcels, plus
-    any iterative callers like effective_inflow_layer) reuse it instead
-    of re-filling every time.
-    '''
-    cache = prof.__dict__.get('_plain_level_array_cache')
-    if cache is None:
-        cache = {}
-        try:
-            prof._plain_level_array_cache = cache
-        except Exception:
-            cache = None
-
-    if cache is not None:
-        entry = cache.get('pres_tmpc_hght_vtmp')
-        if entry is not None:
-            return entry
-
-    pres_p = np.ascontiguousarray(ma.filled(prof.pres, np.nan), dtype=np.float64)
-    tmpc_p = np.ascontiguousarray(ma.filled(prof.tmpc, np.nan), dtype=np.float64)
-    hght_p = np.ascontiguousarray(ma.filled(prof.hght, np.nan), dtype=np.float64)
-    vtmp_p = np.ascontiguousarray(ma.filled(prof.vtmp, np.nan), dtype=np.float64)
-    entry = (pres_p, tmpc_p, hght_p, vtmp_p)
-
-    if cache is not None:
-        cache['pres_tmpc_hght_vtmp'] = entry
-    return entry
-
-
-def _plain_dwpc_array(prof):
-    '''
-    Same idea as _plain_level_arrays, for prof.dwpc alone -- used by
-    effective_inflow_layer()/_binary_cape(), which search level-by-level
-    calling cape(prof, pres=prof.pres[i], tmpc=prof.tmpc[i],
-    dwpc=prof.dwpc[i]) and were still indexing the MaskedArray directly.
-    '''
-    cache = prof.__dict__.get('_plain_level_array_cache')
-    if cache is None:
-        cache = {}
-        try:
-            prof._plain_level_array_cache = cache
-        except Exception:
-            cache = None
-
-    if cache is not None:
-        entry = cache.get('dwpc')
-        if entry is not None:
-            return entry
-
-    dwpc_p = np.ascontiguousarray(ma.filled(prof.dwpc, np.nan), dtype=np.float64)
-
-    if cache is not None:
-        cache['dwpc'] = dwpc_p
-    return dwpc_p
-
 class DefineParcel(object):
     '''
         Create a parcel from a supplied profile object.
@@ -1707,15 +1634,16 @@ def cape(prof, pbot=None, ptop=None, dp=-1, trunc=False, **kwargs):
     # This will be done in 'dp' increments and will use the virtual
     # temperature correction where possible
     pp = np.arange(pbot, blupper+dp, dp, dtype=type(pbot))
-    hh = interp.hght(prof, pp)
-    tmp_env_theta = thermo.theta(pp, interp.temp(prof, pp), 1000.)
-    tmp_env_dwpt = interp.dwpt(prof, pp)
+    hh = np.asarray(ma.filled(interp.hght(prof, pp), np.nan), dtype=np.float64)
+    temp_pp = np.asarray(ma.filled(interp.temp(prof, pp), np.nan), dtype=np.float64)
+    tmp_env_theta = thermo.theta(pp, temp_pp, 1000.)
+    tmp_env_dwpt = np.asarray(ma.filled(interp.dwpt(prof, pp), np.nan), dtype=np.float64)
     tv_env = thermo.virtemp(pp, tmp_env_theta, tmp_env_dwpt)
     tmp1 = thermo.virtemp(pp, theta_parcel, thermo.temp_at_mixrat(blmr, pp))
     tdef = (tmp1 - tv_env) / thermo.ctok(tv_env)
 
     lyre = G * (tdef[:-1]+tdef[1:]) / 2 * (hh[1:]-hh[:-1])
-    totn = lyre[lyre < 0].sum()
+    totn = np.nansum(lyre[lyre < 0])
     if not totn: totn = 0.
 
     # TODO: Because this function is used often to search for parcels that meet a certain
@@ -1747,7 +1675,7 @@ def cape(prof, pbot=None, ptop=None, dp=-1, trunc=False, **kwargs):
     tp1 = tp2
     lyre = 0
 
-    pres_p, tmpc_p, hght_p, vtmp_p = _plain_level_arrays(prof)
+    pres_p, tmpc_p, hght_p, vtmp_p = prof.plain('pres'), prof.plain('tmpc'), prof.plain('hght'), prof.plain('vtmp')
 
     # Moist-adiabatic lift is path-independent: the temperature at any
     # pressure along a moist adiabat depends only on the adiabat's
@@ -1795,15 +1723,6 @@ def cape(prof, pbot=None, ptop=None, dp=-1, trunc=False, **kwargs):
     # as the original Python loop completing without ever hitting the
     # "if (trunc ...) or (i >= uptr ...)" branch.
     return pcl
-
-
-def integrate_parcel(pres, tbot):
-    pcl_tmpc = np.empty(pres.shape, dtype=pres.dtype)
-    pcl_tmpc[0] = tbot
-    for idx in range(1, len(pres)):
-        pcl_tmpc[idx] = thermo.wetlift(pres[idx - 1], pcl_tmpc[idx - 1], pres[idx])
-
-    return pcl_tmpc
 
 
 def parcelx(prof, pbot=None, ptop=None, dp=-1, **kwargs):
@@ -1979,7 +1898,7 @@ def parcelx(prof, pbot=None, ptop=None, dp=-1, **kwargs):
     iter_ranges = np.arange(lptr, prof.pres.shape[0])
     ttraces = np.full(len(iter_ranges), np.nan, dtype=np.float64)
     ptraces = np.full(len(iter_ranges), np.nan, dtype=np.float64)
-    pres_p, tmpc_p, hght_p, vtmp_p = _plain_level_arrays(prof)
+    pres_p, tmpc_p, hght_p, vtmp_p = prof.plain('pres'), prof.plain('tmpc'), prof.plain('hght'), prof.plain('vtmp')
     tp_precomputed_px = np.full(pres_p.shape[0], np.nan, dtype=np.float64)
     target_pres_px = pres_p[lptr:]
     tp_precomputed_px[lptr:] = thermo.satlift(target_pres_px, np.full_like(target_pres_px, thetam_px))
@@ -2411,8 +2330,8 @@ def effective_inflow_layer(prof, ecape=100, ecinh=-250, **kwargs):
     ptop = ma.masked
     if mucape != 0:
         if mucape >= ecape and mucinh > ecinh:
-            pres_p, tmpc_p, hght_p, vtmp_p = _plain_level_arrays(prof)
-            dwpc_p = _plain_dwpc_array(prof)
+            pres_p, tmpc_p, hght_p, vtmp_p = prof.plain('pres'), prof.plain('tmpc'), prof.plain('hght'), prof.plain('vtmp')
+            dwpc_p = prof.plain('dwpc')
             # Begin at surface and search upward for effective surface
             for i in range(prof.sfc, prof.top):
                 # cape()'s scalar thermo path assumes non-NaN input (it's
@@ -2459,68 +2378,6 @@ def effective_inflow_layer(prof, ecape=100, ecinh=-250, **kwargs):
 
     return pbot, ptop
 
-def _binary_cape(prof, ibot, itop, ecape=100, ecinh=-250):
-    if ibot == itop:
-        return prof.pres[ibot]
-    elif ibot == itop - 1:
-        pcl = cape(prof, pres=prof.pres[ibot], tmpc=prof.tmpc[ibot], dwpc=prof.dwpc[ibot])
-        if pcl.bplus < ecape or pcl.bminus <= ecinh:
-            return prof.pres[ibot]
-        else:
-            return prof.pres[itop]
-    else:
-        i = ibot + (itop - ibot) // 2
-        pcl = cape(prof, pres=prof.pres[i], tmpc=prof.tmpc[i], dwpc=prof.dwpc[i])
-        if pcl.bplus < ecape or pcl.bminus <= ecinh:
-            return _binary_cape(prof, ibot, i, ecape=ecape, ecinh=ecinh)
-        else:
-            return _binary_cape(prof, i, itop, ecape=ecape, ecinh=ecinh)
-
-def effective_inflow_layer_binary(prof, ecape=100, ecinh=-250, **kwargs):
-    '''
-        Calculates the top and bottom of the effective inflow layer based on
-        research by [3]_.  Uses a binary search.
-
-        Parameters
-        ----------
-        prof : profile object
-            Profile object
-        ecape : number (optional; default=100)
-            Minimum amount of CAPE in the layer to be considered part of the
-            effective inflow layer.
-        echine : number (optional; default=250)
-            Maximum amount of CINH in the layer to be considered part of the
-            effective inflow layer
-        mupcl : parcel object
-            Most Unstable Layer parcel
-
-        Returns
-        -------
-        pbot : number
-            Pressure at the bottom of the layer (hPa)
-        ptop : number
-            Pressure at the top of the layer (hPa)
-
-    '''
-    mupcl = kwargs.get('mupcl', None)
-    if not mupcl:
-        try:
-            mupcl = prof.mupcl
-        except:
-            mulplvals = DefineParcel(prof, flag=3, pres=300)
-            mupcl = cape(prof, lplvals=mulplvals)
-    mucape = mupcl.bplus
-    mucinh = mupcl.bminus
-    pbot = ma.masked
-    ptop = ma.masked
-    if mucape >= ecape and mucinh > ecinh:
-        istart = np.argmin(np.abs(mupcl.lplvals.pres - prof.pres))
-        itop = np.argmin(np.abs(300 - prof.pres))
-
-        pbot = _binary_cape(prof, istart, prof.sfc, ecape=ecape, ecinh=ecinh)
-        ptop = _binary_cape(prof, istart, itop, ecape=ecape, ecinh=ecinh)
-
-    return pbot, ptop
 
 def bunkers_storm_motion(prof, **kwargs):
     '''
@@ -2844,19 +2701,39 @@ def mmp(prof, **kwargs):
     highest_idx = np.where((agl_hght >= 6000) & (agl_hght < 10000))[0]
     if len(lowest_idx) == 0 or len(highest_idx) == 0:
         return ma.masked
-    possible_shears = np.empty((len(lowest_idx),len(highest_idx)))
     pbots = interp.pres(prof, prof.hght[lowest_idx])
     ptops = interp.pres(prof, prof.hght[highest_idx])
 
     if len(lowest_idx) == 0 or len(highest_idx) == 0:
         return np.ma.masked
 
-    for b in range(len(pbots)):
-        for t in range(len(ptops)):
-            if b < t: continue
-            u_shear, v_shear = winds.wind_shear(prof, pbot=pbots[b], ptop=ptops[t])
-            possible_shears[b,t] = utils.mag(u_shear, v_shear)
-    max_bulk_shear = utils.KTS2MS(np.nanmax(possible_shears.ravel()))
+    # Vectorized replacement for the old nested-Python-loop, one-wind_shear-
+    # call-per-pair search below. interp.components() (which wind_shear()
+    # just wraps u/v subtraction around) already accepts array input, so
+    # the whole (nlow x nhigh) shear grid can be built from two array
+    # interpolations plus a broadcasted subtract instead of
+    # len(pbots)*len(ptops) individual scalar interpolation calls,this
+    # is what made the old loop O(nlow * nhigh) in *call overhead*, not
+    # just in the math, on soundings with many levels in the 0-1 km and
+    # 6-10 km layers.
+    #
+    # The `if b < t: continue` in the original loop only ever filled the
+    # b >= t triangle of `possible_shears`; the rest were left as
+    # np.empty() garbage that happened to get excluded by nanmax() only
+    # by luck of whatever was in that memory. We reproduce the *intended*
+    # b >= t restriction explicitly here (via NaN-masking the b < t half)
+    # rather than carrying forward reads of uninitialized memory.
+    ubot, vbot = interp.components(prof, pbots)
+    utop, vtop = interp.components(prof, ptops)
+    u_shear = np.asarray(utop)[np.newaxis, :] - np.asarray(ubot)[:, np.newaxis]
+    v_shear = np.asarray(vtop)[np.newaxis, :] - np.asarray(vbot)[:, np.newaxis]
+    possible_shears = utils.mag(u_shear, v_shear)
+
+    b_idx = np.arange(len(pbots))[:, np.newaxis]
+    t_idx = np.arange(len(ptops))[np.newaxis, :]
+    possible_shears = np.where(b_idx >= t_idx, possible_shears, np.nan)
+
+    max_bulk_shear = utils.KTS2MS(np.nanmax(possible_shears))
     lr38 = lapse_rate(prof, 3000., 8000., pres=False)
     plower = interp.pres(prof, interp.to_msl(prof, 3000.))
     pupper = interp.pres(prof, interp.to_msl(prof, 12000.))
