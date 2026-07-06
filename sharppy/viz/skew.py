@@ -1150,7 +1150,7 @@ class plotSkewT(backgroundSkewT):
             y1 = self.originy + self.pres_to_pix(p1) / self.scale
             qp.drawLine(self.lpad, y1, self.lpad+offset, y1)
             qp.drawText(self.lpad+txt_offset, y1-20, self.lpad+txt_offset, 40,
-                QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft,
+                QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft | QtCore.Qt.TextDontClip,
                 tab.utils.INT2STR(h/1000)+' km')
 
     def draw_sig_levels(self, qp, plevel=1000, color=None, var_id=""):
@@ -1512,7 +1512,7 @@ class plotSkewT(backgroundSkewT):
             pen = QtGui.QPen(QtGui.QColor(color), 3, QtCore.Qt.SolidLine)
             qp.setPen(pen)
             qp.setFont(self.environment_trace_font)
-            qp.drawText(rect, QtCore.Qt.AlignCenter, tab.utils.INT2STR(label))
+            qp.drawText(rect, QtCore.Qt.AlignCenter | QtCore.Qt.TextDontClip, tab.utils.INT2STR(label))
             qp.setClipping(True)
 
     def drawSTDEV(self, pres, data, stdev, color, qp, width=1):
