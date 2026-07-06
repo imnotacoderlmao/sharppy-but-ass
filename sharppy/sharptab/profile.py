@@ -488,8 +488,10 @@ class BasicProfile(Profile):
             '''
 
         wetbulb = ma.empty(self.pres.shape[0])
-        for i in range(len(self.v)):
-            wetbulb[i] = thermo.wetbulb( self.pres[i], self.tmpc[i], self.dwpc[i] )
+        pres = ma.filled(self.pres, np.nan).astype(np.float64)
+        tmpc = ma.filled(self.tmpc, np.nan).astype(np.float64)
+        dwpc = ma.filled(self.dwpc, np.nan).astype(np.float64)
+        wetbulb = ma.masked_invalid(thermo._fast.wetbulb_profile_loop(pres, tmpc, dwpc))
         wetbulb[wetbulb == self.missing] = ma.masked
         wetbulb.set_fill_value(self.missing)
         return wetbulb
@@ -506,9 +508,9 @@ class BasicProfile(Profile):
             -------
             Array of theta profile
             '''
-        theta = ma.empty(self.pres.shape[0])
-        for i in range(len(self.v)):
-            theta[i] = thermo.theta(self.pres[i], self.tmpc[i])
+        pres = ma.filled(self.pres, np.nan).astype(np.float64)
+        tmpc = ma.filled(self.tmpc, np.nan).astype(np.float64)
+        theta = ma.masked_invalid(thermo._fast.theta_profile_loop(pres, tmpc))
         theta[theta == self.missing] = ma.masked
         theta.set_fill_value(self.missing)
         theta = thermo.ctok(theta)
@@ -526,9 +528,10 @@ class BasicProfile(Profile):
             -------
             Array of theta-e profile
             '''
-        thetae = ma.empty(self.pres.shape[0])
-        for i in range(len(self.v)):
-            thetae[i] = thermo.ctok( thermo.thetae(self.pres[i], self.tmpc[i], self.dwpc[i]) )
+        pres = ma.filled(self.pres, np.nan).astype(np.float64)
+        tmpc = ma.filled(self.tmpc, np.nan).astype(np.float64)
+        dwpc = ma.filled(self.dwpc, np.nan).astype(np.float64)
+        thetae = thermo.ctok(ma.masked_invalid(thermo._fast.thetae_profile_loop(pres, tmpc, dwpc)))
         thetae[thetae == self.missing] = ma.masked
         thetae.set_fill_value(self.missing)
         return thetae

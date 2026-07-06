@@ -146,6 +146,67 @@ def temp_at_mixrat(w, p):
     x = (10. ** ((c1 * x) + c2) - c3 + (c4 * (10. ** (c5 * x) - c6) ** 2)) - ZEROCNK
     return x
 
+@njit(cache=True, fastmath=False, nogil=True)
+def thetae(p, t, td):
+    p2, t2 = drylift(p, t, td)
+    return theta(100., wetlift(p2, t2, 100.), 1000.)
+
+
+@njit(cache=True, fastmath=False, nogil=True)
+def wetbulb(p, t, td):
+    p2, t2 = drylift(p, t, td)
+    return wetlift(p2, t2, p)
+
+
+@njit(cache=True, fastmath=False, nogil=True)
+def theta_profile_loop(pres, tmpc):
+    '''Whole-profile version of thermo.theta, run inside one compiled
+    loop instead of a Python for-loop calling the scalar dispatch path
+    once per level (see profile.py get_theta_profile).'''
+    n = pres.shape[0]
+    out = np.empty(n, dtype=np.float64)
+    for i in range(n):
+        p = pres[i]
+        t = tmpc[i]
+        if p != p or t != t:
+            out[i] = np.nan
+        else:
+            out[i] = theta(p, t, 1000.)
+    return out
+
+
+@njit(cache=True, fastmath=False, nogil=True)
+def wetbulb_profile_loop(pres, tmpc, dwpc):
+    '''Whole-profile version of thermo.wetbulb (see theta_profile_loop).'''
+    n = pres.shape[0]
+    out = np.empty(n, dtype=np.float64)
+    for i in range(n):
+        p = pres[i]
+        t = tmpc[i]
+        td = dwpc[i]
+        if p != p or t != t or td != td:
+            out[i] = np.nan
+        else:
+            out[i] = wetbulb(p, t, td)
+    return out
+
+
+@njit(cache=True, fastmath=False, nogil=True)
+def thetae_profile_loop(pres, tmpc, dwpc):
+    '''Whole-profile version of thermo.thetae (see theta_profile_loop).'''
+    n = pres.shape[0]
+    out = np.empty(n, dtype=np.float64)
+    for i in range(n):
+        p = pres[i]
+        t = tmpc[i]
+        td = dwpc[i]
+        if p != p or t != t or td != td:
+            out[i] = np.nan
+        else:
+            out[i] = thetae(p, t, td)
+    return out
+
+
 
 G = 9.80665  # sharptab.constants.G, duplicated here so this stays a
              # self-contained compiled unit (avoids importing params.py,
@@ -237,8 +298,13 @@ def _warm():
         _warm_hght = np.array([0., 500., 1000.], dtype=np.float64)
         _warm_vtmp = np.array([21., 19., 17.], dtype=np.float64)
         _warm_tp = np.array([20., 18.5, 17.], dtype=np.float64)
-        cape_lift_loop(_warm_pres, _warm_tmpc, _warm_hght, _warm_vtmp, _warm_tp,
-                       0, 2, 1000., 0., 21., 20., False)
+        cape_lift_loop(_warm_pres, _warm_tmpc, _warm_hght, _warm_vtmp, _warm_tp, 0, 2, 1000., 0., 21., 20., False)
+        thetae(1000., 20., 10.)
+        wetbulb(1000., 20., 10.)
+        _warm_dwpc = np.array([10., 8., 6.], dtype=np.float64)
+        theta_profile_loop(_warm_pres, _warm_tmpc)
+        wetbulb_profile_loop(_warm_pres, _warm_tmpc, _warm_dwpc)
+        thetae_profile_loop(_warm_pres, _warm_tmpc, _warm_dwpc)
     except Exception:
         pass
 _warm()
