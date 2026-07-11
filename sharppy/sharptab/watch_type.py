@@ -234,42 +234,15 @@ def posneg_temperature(prof, start=-1):
     te1 = interp.temp(prof, pe1)
     tp1 = 0
 
-    warmlayer = coldlayer = lyre = totp = totn = tote = ptop = pbot = lyrlast = 0
+    # Same reasoning as posneg_wetbulb's loop: sequential state machine,
+    # not batch-vectorizable, but the compiled loop still removes Python
+    # interpreter + MaskedArray.__getitem__ overhead per level.
+    pres_p = np.asarray(prof.pres[lptr:uptr+1])
+    hght_p = np.asarray(prof.hght[lptr:uptr+1])
+    temp_p = np.asarray(interp.temp(prof, prof.pres[lptr:uptr+1]))
 
-    for i in np.arange(uptr, lptr-1, -1):
-        pe2 = prof.pres[i]
-        h2 = prof.hght[i]
-        te2 = interp.temp(prof, pe2)
-        tp2 = 0
-        tdef1 = (0 - te1) / thermo.ctok(te1);
-        tdef2 = (0 - te2) / thermo.ctok(te2);
-        lyrlast = lyre;
-        lyre = 9.8 * (tdef1 + tdef2) / 2.0 * (h2 - h1);
-
-        # Has a warm layer been found yet?
-        if te2 > 0:
-            if warmlayer == 0:
-                warmlayer = 1
-                ptop = pe2
-
-        # Has a cold layer been found yet?
-        if te2 < 0:
-            if warmlayer == 1 and coldlayer == 0:
-                coldlayer = 1
-                pbot = pe2
-
-        if warmlayer > 0:
-            if lyre > 0:
-                totp += lyre
-            else:
-                totn += lyre
-            tote += lyre
-
-        pelast = pe1
-        pe1 = pe2
-        h1 = h2
-        te1 = te2
-        tp1 = tp2
+    warmlayer, coldlayer, totp, totn, ptop, pbot = thermo._fast.posneg_temperature_loop(
+        pres_p, hght_p, temp_p, 0, len(pres_p) - 1, float(pe1), float(h1), float(te1))
     
     if warmlayer == 1 and coldlayer == 1:
         pos = totp
@@ -350,42 +323,25 @@ def posneg_wetbulb(prof, start=-1):
     te1 = thermo.wetbulb(pe1, interp.temp(prof, pe1), interp.dwpt(prof, pe1))
     tp1 = 0
 
-    warmlayer = coldlayer = lyre = totp = totn = tote = ptop = pbot = lyrlast = 0
+    # The warmlayer/coldlayer tracking below is a genuinely sequential
+    # "first time this crossing is seen" state machine -- not something
+    # that vectorizes with a single batch solve. But it's still just
+    # arithmetic and comparisons once each level's wetbulb is known, so
+    # compiling the loop itself (posneg_wetbulb_loop) removes the Python
+    # interpreter + MaskedArray.__getitem__ overhead per level without
+    # paying numpy vectorization's fixed per-call array-allocation cost
+    # (which made a batched-wetbulb version of this *slower* for the
+    # short ranges this function is typically called with -- see git
+    # history). temp/dwpt are still precomputed with one vectorized
+    # interp call each (cheap linear interpolation, no Newton solve, so
+    # vectorizing that part is worthwhile on its own).
+    pres_p = np.asarray(prof.pres[lptr:uptr+1])
+    hght_p = np.asarray(prof.hght[lptr:uptr+1])
+    temp_p = np.asarray(interp.temp(prof, prof.pres[lptr:uptr+1]))
+    dwpc_p = np.asarray(interp.dwpt(prof, prof.pres[lptr:uptr+1]))
 
-    for i in np.arange(uptr, lptr-1, -1):
-        pe2 = prof.pres[i]
-        h2 = prof.hght[i]
-        te2 = thermo.wetbulb(pe2, interp.temp(prof, pe2), interp.dwpt(prof, pe2))
-        tp2 = 0
-        tdef1 = (0 - te1) / thermo.ctok(te1);
-        tdef2 = (0 - te2) / thermo.ctok(te2);
-        lyrlast = lyre;
-        lyre = 9.8 * (tdef1 + tdef2) / 2.0 * (h2 - h1);
-
-        # Has a warm layer been found yet?
-        if te2 > 0:
-            if warmlayer == 0:
-                warmlayer = 1
-                ptop = pe2
-
-        # Has a cold layer been found yet?
-        if te2 < 0:
-            if warmlayer == 1 and coldlayer == 0:
-                coldlayer = 1
-                pbot = pe2
-
-        if warmlayer > 0:
-            if lyre > 0:
-                totp += lyre
-            else:
-                totn += lyre
-            tote += lyre
-
-        pelast = pe1
-        pe1 = pe2
-        h1 = h2
-        te1 = te2
-        tp1 = tp2
+    warmlayer, coldlayer, totp, totn, ptop, pbot = thermo._fast.posneg_wetbulb_loop(
+        pres_p, hght_p, temp_p, dwpc_p, 0, len(pres_p) - 1, float(pe1), float(h1), float(te1))
     
     if warmlayer == 1 and coldlayer == 1:
         pos = totp

@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import numpy.ma as ma
 from qtpy import QtGui, QtCore, QtWidgets
@@ -12,7 +13,7 @@ from qtpy.QtWidgets import *
 __all__ = ['backgroundHodo', 'plotHodo']
 
 
-class backgroundHodo(QFrame):
+class backgroundHodo(QOpenGLWidget):
     '''
     Handles the plotting of the backgroun frame onto
     a QPixmap. Inherits from the QtWidgets.QFrame object.
@@ -28,8 +29,6 @@ class backgroundHodo(QFrame):
         self.hodomag = 160.
         ## ring increment
         self.ring_increment = 10
-        self.min_zoom = 40.
-        self.max_zoom = 200.
 
         self.initUI()
 
@@ -109,14 +108,12 @@ class backgroundHodo(QFrame):
 
         '''
         ## get the new scaling magnitude
-        new_mag = self.hodomag - (e.angleDelta().y() / 5)
-        ## make sure the user doesn't zoom out of
-        ## bounds to prevent drawing issues
-        if new_mag >= self.min_zoom and new_mag <= self.max_zoom:
-            self.hodomag = new_mag
-        ## if it is out of bounds, do nothing
-        else:
-            self.hodomag = self.hodomag
+        self.hodomag = self.hodomag - (e.angleDelta().y() * (self.hodomag / 1000))
+        
+        if self.hodomag > self.ring_increment * 25:
+            self.ring_increment = self.ring_increment * 2
+        elif self.hodomag < self.ring_increment * 12.5:
+            self.ring_increment = int(max(self.ring_increment / 2, 5))
 
         if self.wind_units == 'm/s':
             conv = tab.utils.KTS2MS
@@ -125,8 +122,7 @@ class backgroundHodo(QFrame):
         ## get the maximum speed value in the frame for the ring increment.
         ## this is to help reduce drawing resources
         max_uv = int(conv(np.hypot(*self.pix_to_uv(self.brx, self.bry))))
-        self.rings = range(self.ring_increment, max_uv+self.ring_increment,
-                           self.ring_increment)
+        self.rings = range(self.ring_increment, max_uv+self.ring_increment, self.ring_increment)
         ## reassign the new scale
         self.scale = (self.brx - self.tlx) / self.hodomag
 
@@ -147,6 +143,10 @@ class backgroundHodo(QFrame):
         e: an Event object
 
         '''
+        # See backgroundSkewT.resizeEvent's comment: super() must run
+        # first so QOpenGLWidget reallocates its framebuffer for the new
+        # size before self.initUI() recomputes plot geometry against it.
+        super(backgroundHodo, self).resizeEvent(e)
         self.initUI()
 
     def plotBackground(self):
@@ -249,10 +249,10 @@ class backgroundHodo(QFrame):
         pen = QtGui.QPen(self.fg_color)
         qp.setPen(pen)
         qp.setFont(self.label_font)
-        qp.drawText(top_rect, QtCore.Qt.AlignCenter, tab.utils.INT2STR(spd))
-        qp.drawText(right_rect, QtCore.Qt.AlignCenter, tab.utils.INT2STR(spd))
-        qp.drawText(bottom_rect, QtCore.Qt.AlignCenter, tab.utils.INT2STR(spd))
-        qp.drawText(left_rect, QtCore.Qt.AlignCenter, tab.utils.INT2STR(spd))
+        qp.drawText(top_rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, tab.utils.INT2STR(spd))
+        qp.drawText(right_rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, tab.utils.INT2STR(spd))
+        qp.drawText(bottom_rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, tab.utils.INT2STR(spd))
+        qp.drawText(left_rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, tab.utils.INT2STR(spd))
 
     def hodo_to_pix(self, ang, spd):
         '''
@@ -615,16 +615,12 @@ class plotHodo(backgroundHodo):
         self.eff_inflow_color = QtGui.QColor(kwargs['eff_inflow_color'])
 
         if self.wind_units == 'm/s':
-            self.ring_increment = 5
             self.hodomag = 80.
-            self.min_zoom = 10.
-            self.max_zoom = 200.
+            self.ring_increment = 10
             conv = tab.utils.KTS2MS
         else:
-            self.ring_increment = 10
             self.hodomag = 160.
-            self.min_zoom =20.
-            self.max_zoom = 400.
+            self.ring_increment = 10
             conv = lambda s: s
 
         self.scale = (self.brx - self.tlx) / self.hodomag
@@ -1002,7 +998,7 @@ class plotHodo(backgroundHodo):
             ## now make the pen white and draw text using
             ## the invisible rectangles
             qp.setFont(self.readout_font)
-            qp.drawText(text_rect, QtCore.Qt.AlignCenter, readout)
+            qp.drawText(text_rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, readout)
 
         qp.end()
 
@@ -1105,7 +1101,7 @@ class plotHodo(backgroundHodo):
             mw_spd = tab.utils.KTS2MS(mw_spd)
 
         mw_str = tab.utils.INT2STR(np.float64(self.mean_lcl_el_vec[0])) + '/' + tab.utils.INT2STR(mw_spd)
-        qp.drawText(mw_rect, QtCore.Qt.AlignCenter, mw_str)
+        qp.drawText(mw_rect, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, mw_str)
 
     def drawCorfidi(self, qp):
         '''

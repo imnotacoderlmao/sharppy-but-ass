@@ -14,6 +14,12 @@ class backgroundSpeed(QtWidgets.QFrame):
     '''
     def __init__(self):
         super(backgroundSpeed, self).__init__()
+        # Kept in sync with the paired Skew-T's self.scale/self.originy
+        # via plotSkewT.view_changed (see SPCWindow.py wiring and
+        # setScale() below) so this column's data zooms/pans together
+        # with the Skew-T's pressure axis instead of staying fixed.
+        self.scale = 1.
+        self.originy = 0.
         self.initUI()
 
 
@@ -143,6 +149,16 @@ class plotSpeed(backgroundSpeed):
         self.fg_color = '#ffffff'
         self.wind_units = 'knots'
         self.isotach_color = QtGui.QColor("#9D5736")
+        # Reference to the paired plotSkewT instance (see setSkewT() /
+        # SPCWindow.py's wiring), used to compute this column's y-axis
+        # directly from the Skew-T's own pres_to_pix/originy/scale
+        # instead of a locally-recomputed copy of the same geometry.
+        # The two widgets' padding/title-height conventions differ
+        # enough that a "same formula, separately-computed constants"
+        # copy drifted from the Skew-T's actual pressure levels once
+        # zoomed in far enough for that small constant offset to get
+        # amplified by dividing by a small scale.
+        self.skewt = None
 
         super(plotSpeed, self).__init__()
         ## initialize values to be accessable to functions
@@ -150,7 +166,7 @@ class plotSpeed(backgroundSpeed):
 
         ## give different colors for different height values.
         ## these are consistent with the hodograph colors.
-        self.low__low_level_color = QtGui.QColor("#FF00FF")
+        self.low_low_level_color = QtGui.QColor("#FF00FF")
         self.low_level_color = QtGui.QColor("#FF0000")
         self.mid_level_color = QtGui.QColor("#00FF00")
         self.upper_level_color = QtGui.QColor("#FFFF00")
@@ -165,6 +181,61 @@ class plotSpeed(backgroundSpeed):
         self.plotBackground()
         self.plotData()
         self.update()
+
+    def setSkewT(self, skewt):
+        '''
+        Link this widget to the plotSkewT instance it's paired with, so
+        draw_profile() can compute its y-axis directly from the Skew-T's
+        own pres_to_pix/originy/scale (see __init__'s comment for why a
+        locally-recomputed copy isn't good enough).
+        '''
+        self.skewt = skewt
+
+    def _skew_vertical_offset(self):
+        '''
+        How many pixels lower (positive) or higher (negative) this
+        widget's top-left origin sits than the paired Skew-T's, measured
+        live via Qt's widget geometry.
+
+        This widget and the Skew-T live in separate branches of
+        SPCWindow's layout (self.sound sits directly in the main grid;
+        self.speed_vs_height is nested inside a QFrame that also holds a
+        "SHARPpy vX.X" brand-label row above it), so even with
+        scale/originy fully synced between them, they don't share the
+        same canvas height or the same screen origin -- a Y value
+        computed against the Skew-T's own (taller) canvas needs this
+        offset removed before it means anything on this (shorter, lower)
+        one. A previous attempt at this fix hardcoded the equivalent
+        padding/title-height constants instead of measuring them, which
+        is why it drifted the moment those two widgets' conventions
+        diverged; mapping actual widget geometry through a common
+        ancestor avoids needing to know any of those constants at all,
+        and stays correct if the layout ever changes.
+        '''
+        if self.skewt is None:
+            return 0
+        top_level = self.window()
+        my_origin = self.mapTo(top_level, QtCore.QPoint(0, 0)).y()
+        skew_origin = self.skewt.mapTo(top_level, QtCore.QPoint(0, 0)).y()
+        return my_origin - skew_origin
+
+    def setScale(self, scale, originy):
+        '''
+        Slot for plotSkewT.view_changed: triggers a redraw when the
+        paired Skew-T's zoom/pan changes. The scale/originy arguments
+        themselves aren't stored -- draw_profile() reads them live from
+        self.skewt on every redraw instead, so there's no separate copy
+        that could drift out of sync.
+        '''
+        if self.prof is not None:
+            # clearData() + plotBackground() first: plotData() only
+            # draws on top of self.plotBitMap without clearing it, so
+            # skipping this would smear stale wind-speed lines from the
+            # previous zoom level behind the new ones on every tick.
+            self.clearData()
+            self.plotBackground()
+            self.plotData()
+            self.update()
 
     def setPreferences(self, update_gui=True, **prefs):
         self.bg_color = prefs['bg_color']
@@ -261,6 +332,8 @@ class plotSpeed(backgroundSpeed):
         if self.wind_units == 'm/s':
             spd = tab.utils.KTS2MS(spd)
 
+        skew_offset = self._skew_vertical_offset()
+
         ## loop through the profile
         for i in range( pres.shape[0] ):
             ## get the important values from the profile
@@ -271,7 +344,12 @@ class plotSpeed(backgroundSpeed):
             ## and convert the pressure in log space to a
             ## y pixel coordinate
             x1 = self.speed_to_pix(spd1)
-            y1 = self.pres_to_pix(p1)
+            if self.skewt is not None:
+                y1 = self.skewt.originy + self.skewt.pres_to_pix(p1) / self.skewt.scale - skew_offset
+            else:
+                # Not linked to a Skew-T (e.g. standalone/test usage) --
+                # fall back to this widget's own unzoomed axis.
+                y1 = self.pres_to_pix(p1)
             ## now color code the different heights
             if hgt1 < 1000:
                 pen = QtGui.QPen(self.low_low_level_color, 2)

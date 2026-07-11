@@ -16,8 +16,15 @@ import os
 
 __all__ = ['backgroundSkewT', 'plotSkewT']
 
-class backgroundSkewT(QWidget):
+class backgroundSkewT(QOpenGLWidget):
     clicked = QtCore.Signal(dict)
+    # Emitted whenever wheelEvent changes self.scale/self.originy (the
+    # only place either is mutated -- see wheelEvent below). Lets other
+    # widgets that plot against the same pressure axis (e.g. speed.py's
+    # Wind Speed column, which has its own independent pres_to_pix and
+    # previously never moved when the Skew-T was zoomed) stay visually
+    # locked to the Skew-T's y-axis instead of drifting out of alignment.
+    view_changed = QtCore.Signal(float, float)
 
     def __init__(self, plot_omega=False):
         super(backgroundSkewT, self).__init__()
@@ -111,6 +118,17 @@ class backgroundSkewT(QWidget):
         Resize the plot based on adjusting the main window.
 
         '''
+        # NOTE: must call super() first so QOpenGLWidget's own resize
+        # handling (reallocating its internal GL framebuffer to the new
+        # size) actually runs before self.initUI() recomputes plot
+        # geometry from the new self.width()/self.height(). Skipping
+        # this was harmless back when this class was a plain QWidget
+        # (QWidget.resizeEvent does nothing that mattered here), but for
+        # QOpenGLWidget it meant the GL surface stayed sized for the
+        # *previous* dimensions while everything else -- plotBitMap,
+        # panel layout -- recomputed for the new ones, producing the
+        # cropped/misaligned-panel behavior on resize.
+        super(backgroundSkewT, self).resizeEvent(e)
         self.initUI()
 
     def wheelEvent(self, e):
@@ -144,6 +162,7 @@ class backgroundSkewT(QWidget):
 
         self.plotBackground()
         self.update()
+        self.view_changed.emit(self.scale, self.originy)
 
     def draw_dry_adiabat(self, theta, qp):
         '''
@@ -394,6 +413,7 @@ class plotSkewT(backgroundSkewT):
         self.lcl_mkr_color = QtGui.QColor(kwargs.get('lcl_mkr_color', '#00FF00'))
         self.lfc_mkr_color = QtGui.QColor(kwargs.get('lfc_mkr_color', '#FFFF00'))
         self.el_mkr_color = QtGui.QColor(kwargs.get('el_mkr_color', '#FF00FF'))
+        self.mpl_mkr_color = QtGui.QColor(kwargs.get('mpl_mkr_color', '#4400FF'))
         self.sig_temp_level_color = QtGui.QColor('#0A63FF')
 
         self.sfc_units = kwargs.get('sfc_units', 'Fahrenheit')
@@ -909,6 +929,16 @@ class plotSkewT(backgroundSkewT):
         self.popupmenu.popup(self.mapToGlobal(pos))
 
     def wheelEvent(self, e):
+        # NOTE: clear the canvas *before* calling super().wheelEvent() so
+        # that the single self.plotBackground() call it makes (see
+        # backgroundSkewT.wheelEvent) draws onto a clean bitmap. This used
+        # to be ordered the other way around, which meant that call's
+        # entire render (every isotherm/adiabat/mixing-ratio line/isobar/
+        # label) was thrown away a few lines later by a second .fill() +
+        # a second, fully redundant self.plotBackground() call re-doing
+        # the exact same rendering work -- on every single wheel-delta
+        # tick during a zoom gesture.
+        self.plotBitMap.fill(self.bg_color)
         super(plotSkewT, self).wheelEvent(e)
 
         trans_tmx = self.originx + self.tmpc_to_pix(self.tmpc, self.pres) / self.scale
@@ -918,10 +948,8 @@ class plotSkewT(backgroundSkewT):
         self.drag_tmpc.setCoords(trans_tmx, trans_y)
         self.drag_dwpc.setCoords(trans_dwx, trans_y)
 
-        self.plotBitMap.fill(self.bg_color)
         if self.readout:
             self.updateReadout()
-        self.plotBackground()
         self.plotData()
 
     def paintEvent(self, e):
@@ -1196,6 +1224,7 @@ class plotSkewT(backgroundSkewT):
         lclp = self.pcl.lclpres
         lfcp = self.pcl.lfcpres
         elp = self.pcl.elpres
+        mplp = self.pcl.mplpres
         lvls = [[self.pcl.p0c,self.pcl.hght0c, '0 C'], [self.pcl.pm20c, self.pcl.hghtm20c, '-20 C'],[self.pcl.pm30c, self.pcl.hghtm30c, '-30 C']]
         qp.setFont(self.hght_font)
 
@@ -1223,6 +1252,13 @@ class plotSkewT(backgroundSkewT):
             qp.drawLine(x[0], y, x[1], y)
             rect3 = QtCore.QRectF(x[0], y-8, x[1] - x[0], 4)
             qp.drawText(rect3, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, "EL")
+        if tab.utils.QC(mplp) and mplp != lclp:
+            y = self.originy + self.pres_to_pix(mplp) / self.scale
+            pen = QtGui.QPen(self.mpl_mkr_color, 2, QtCore.Qt.SolidLine)
+            qp.setPen(pen)
+            qp.drawLine(x[0], y, x[1], y)
+            rect3 = QtCore.QRectF(x[0], y-8, x[1] - x[0], 4)
+            qp.drawText(rect3, QtCore.Qt.TextDontClip | QtCore.Qt.AlignCenter, "MPL")
 
     def draw_temp_levels(self, qp):
         if self.pcl is None:

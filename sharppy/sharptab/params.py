@@ -1612,116 +1612,54 @@ def cape(prof, pbot=None, ptop=None, dp=-1, trunc=False, **kwargs):
     if type(interp.vtmp(prof, pbot)) == type(ma.masked) or type(interp.vtmp(prof, ptop)) == type(ma.masked):
         return pcl
 
-    # Begin with the Mixing Layer
-    pe1 = pbot
-    h1 = interp.hght(prof, pe1)
-    tp1 = thermo.virtemp(pres, tmpc, dwpc)
-
-    # Lift parcel and return LCL pres (hPa) and LCL temp (C)
-    pe2, tp2 = thermo.drylift(pres, tmpc, dwpc)
-    if np.ma.is_masked(pe2) or not utils.QC(pe2) or np.isnan(pe2):
-        return pcl
-    blupper = pe2
-
-    # Calculate lifted parcel theta for use in iterative CINH loop below
-    # RECALL: lifted parcel theta is CONSTANT from LPL to LCL
-    theta_parcel = thermo.theta(pe2, tp2, 1000.)
-
-    # Environmental theta and mixing ratio at LPL
-    blmr = thermo.mixratio(pres, dwpc)
-
-    # ACCUMULATED CINH IN THE MIXING LAYER BELOW THE LCL
-    # This will be done in 'dp' increments and will use the virtual
-    # temperature correction where possible
-    pp = np.arange(pbot, blupper+dp, dp, dtype=type(pbot))
-    hh = np.asarray(ma.filled(interp.hght(prof, pp), np.nan), dtype=np.float64)
-    temp_pp = np.asarray(ma.filled(interp.temp(prof, pp), np.nan), dtype=np.float64)
-    tmp_env_theta = thermo.theta(pp, temp_pp, 1000.)
-    tmp_env_dwpt = np.asarray(ma.filled(interp.dwpt(prof, pp), np.nan), dtype=np.float64)
-    tv_env = thermo.virtemp(pp, tmp_env_theta, tmp_env_dwpt)
-    tmp1 = thermo.virtemp(pp, theta_parcel, thermo.temp_at_mixrat(blmr, pp))
-    tdef = (tmp1 - tv_env) / thermo.ctok(tv_env)
-
-    lyre = G * (tdef[:-1]+tdef[1:]) / 2 * (hh[1:]-hh[:-1])
-    totn = np.nansum(lyre[lyre < 0])
-    if not totn: totn = 0.
-
-    # TODO: Because this function is used often to search for parcels that meet a certain
-    #       CAPE/CIN threshold, we can add a few statments here and there in the code
-    #       that checks to see if these thresholds are met and if they are, return a flag.
-    #       We don't need to call wetlift() anymore than we need to.  This is one location
-    #       where we can do this.  If the CIN is too large, return here...don't have to worry
-    #       about ever entering the loop!
-
-    # Move the bottom layer to the top of the boundary layer
-    if pbot > pe2:
-        pbot = pe2
-        pcl.blayer = pbot
-
-    if pbot < prof.pres[-1]:
-        # Check for the case where the LCL is above the
-        # upper boundary of the data (e.g. a dropsonde)
-        return pcl
-
-    # Find lowest observation in layer
-    lptr = ma.where(pbot > prof.pres)[0].min()
-    uptr = ma.where(ptop < prof.pres)[0].max()
-
-    # START WITH INTERPOLATED BOTTOM LAYER
-    # Begin moist ascent from lifted parcel LCL (pe2, tp2)
-    pe1 = pbot
-    h1 = interp.hght(prof, pe1)
-    te1 = interp.vtmp(prof, pe1)
-    tp1 = tp2
-    lyre = 0
+    # Original relied on thermo.drylift's array-aware masked-propagation
+    # to turn a masked/NaN pres/tmpc/dwpc into a masked/NaN pe2, caught
+    # by a check right after calling it. cape_only bypasses drylift's
+    # Python dispatch entirely (calls the njit scalar kernel directly,
+    # which requires plain non-NaN floats -- see its docstring), so that
+    # safety net needs to be explicit here instead, before ever calling
+    # the compiled kernel.
+    if (np.ma.is_masked(pres) or np.ma.is_masked(tmpc) or np.ma.is_masked(dwpc)
+            or pres != pres or tmpc != tmpc or dwpc != dwpc):
+         return pcl
 
     pres_p, tmpc_p, hght_p, vtmp_p = prof.plain('pres'), prof.plain('tmpc'), prof.plain('hght'), prof.plain('vtmp')
 
-    # Moist-adiabatic lift is path-independent: the temperature at any
-    # pressure along a moist adiabat depends only on the adiabat's
-    # defining theta-w (here "thetam"), computed once at the LCL,
-    # not on however many intermediate levels you'd otherwise
-    # recompute it from sequentially. So, derive thetam once, then
-    # solve satlift for every remaining level in one vectorized call
-    # instead of the old per-level recomputation loop.
-    thta_lcl = thermo.theta(pe1, tp1, 1000.)
-    thetam = thta_lcl - thermo.wobf(thta_lcl) + thermo.wobf(tp1)
-    tp_precomputed = np.full(pres_p.shape[0], np.nan, dtype=np.float64)
-    target_pres = pres_p[int(lptr):]
-    tp_precomputed[int(lptr):] = thermo.satlift(target_pres, np.full_like(target_pres, thetam))
+    logp_hght_v, hght_v = interp._valid_xy(prof, 'logp_hght', prof.logp[::-1], prof.hght[::-1])
+    logp_tmpc_v, tmpc_v = interp._valid_xy(prof, 'logp_tmpc', prof.logp[::-1], prof.tmpc[::-1])
+    logp_dwpc_v, dwpc_v = interp._valid_xy(prof, 'logp_dwpc', prof.logp[::-1], prof.dwpc[::-1])
+    logp_vtmp_v, vtmp_v = interp._valid_xy(prof, 'logp_vtmp', prof.logp[::-1], prof.vtmp[::-1])
+    logp_hght_v = np.asarray(logp_hght_v, dtype=np.float64)
+    hght_v = np.asarray(hght_v, dtype=np.float64)
+    logp_tmpc_v = np.asarray(logp_tmpc_v, dtype=np.float64)
+    tmpc_v = np.asarray(tmpc_v, dtype=np.float64)
+    logp_dwpc_v = np.asarray(logp_dwpc_v, dtype=np.float64)
+    dwpc_v = np.asarray(dwpc_v, dtype=np.float64)
+    logp_vtmp_v = np.asarray(logp_vtmp_v, dtype=np.float64)
+    vtmp_v = np.asarray(vtmp_v, dtype=np.float64)
 
-    totp_add, totn_add, lyre, pe1_f, h1_f, te1_f, tp1_f, truncated = _fast.cape_lift_loop(
-        pres_p, tmpc_p, hght_p, vtmp_p, tp_precomputed, int(lptr), int(uptr),
-        float(pe1), float(h1), float(te1), float(tp1), bool(trunc))
-    totp += totp_add
-    totn += totn_add
+    bplus, bminus, pbot_adj = _fast.cape_only(
+        float(pres), float(tmpc), float(dwpc), float(pbot), float(ptop), bool(trunc),
+        pres_p, tmpc_p, hght_p, vtmp_p,
+        logp_hght_v, hght_v, logp_tmpc_v, tmpc_v,
+        logp_dwpc_v, dwpc_v, logp_vtmp_v, vtmp_v)
 
-    if truncated:
-        pe3, h3, te3, tp3 = pe1_f, h1_f, te1_f, tp1_f
-        lyrf = lyre
-        pe2 = pe1_f  # the level the loop stopped at
-        if lyrf > 0:
-            pcl.bplus = totp - lyrf
-            pcl.bminus = totn
-        else:
-            pcl.bplus = totp
-            if pe2 > 500.: pcl.bminus = totn + lyrf
-            else: pcl.bminus = totn
-        pe2 = ptop
-        h2 = interp.hght(prof, pe2)
-        te2 = interp.vtmp(prof, pe2)
-        tp2 = thermo.wetlift(pe3, tp3, pe2)
-        tdef3 = (thermo.virtemp(pe3, tp3, tp3) - te3) / thermo.ctok(te3)
-        tdef2 = (thermo.virtemp(pe2, tp2, tp2) - te2) / thermo.ctok(te2)
-        lyrf = G * (tdef3 + tdef2) / 2. * (h2 - h3)
-        if lyrf > 0: pcl.bplus += lyrf
-        else:
-            if pe2 > 500.: pcl.bminus += lyrf
-        if pcl.bplus == 0: pcl.bminus = 0.
-    # else: loop ran off the end of the profile without ever reaching
-    # the truncation condition. pcl.bplus/bminus stay masked, same
-    # as the original Python loop completing without ever hitting the
-    # "if (trunc ...) or (i >= uptr ...)" branch.
+    # Mirrors cape()'s own pcl.blayer updates at both of its internal
+    # pbot adjustments (pre-mixing-layer "if pbot > pres" and post-LCL
+    # "if pbot > pe2") -- cape_only performs both adjustments internally
+    # and returns the final result so this bookkeeping can stay correct
+    # without duplicating that logic here.
+    if pbot_adj != pbot:
+        pcl.blayer = pbot_adj
+
+    if not np.isnan(bplus):
+        pcl.bplus = bplus
+        pcl.bminus = bminus
+    # else: either the LCL calculation failed, or the LCL ended up above
+    # the top of the profile's data, or the lift loop ran off the end of
+    # the profile without ever reaching the truncation condition --
+    # pcl.bplus/bminus stay masked in all these cases, same as the
+    # original.
     return pcl
 
 
@@ -1901,7 +1839,12 @@ def parcelx(prof, pbot=None, ptop=None, dp=-1, **kwargs):
     pres_p, tmpc_p, hght_p, vtmp_p = prof.plain('pres'), prof.plain('tmpc'), prof.plain('hght'), prof.plain('vtmp')
     tp_precomputed_px = np.full(pres_p.shape[0], np.nan, dtype=np.float64)
     target_pres_px = pres_p[lptr:]
-    tp_precomputed_px[lptr:] = thermo.satlift(target_pres_px, np.full_like(target_pres_px, thetam_px))
+    tp_precomputed_px[lptr:] = _fast.satlift_array_loop(
+        target_pres_px.astype(np.float64), np.full_like(target_pres_px, thetam_px, dtype=np.float64))
+    # Cache virtemp(pe1, tp1, tp1) across iterations: it's recomputed
+    # identically as virtemp(pe2, tp2, tp2) by the previous iteration (see
+    # loop body below), so there's no need to call virtemp() on it twice.
+    vtp1 = thermo.virtemp(pe1, tp1, tp1)
     for i in iter_ranges:
         tmpc_i = tmpc_p[i]
         if tmpc_i != tmpc_i:  # NaN check (was: not utils.QC(prof.tmpc[i]))
@@ -1918,11 +1861,12 @@ def parcelx(prof, pbot=None, ptop=None, dp=-1, **kwargs):
         te2 = vtmp_p[i]
         #te2 = thermo.virtemp(prof.pres[i], prof.tmpc[i], prof.dwpc[i])
         tp2 = tp_precomputed_px[i]
-        tdef1 = (thermo.virtemp(pe1, tp1, tp1) - te1) / thermo.ctok(te1)
-        tdef2 = (thermo.virtemp(pe2, tp2, tp2) - te2) / thermo.ctok(te2)
+        vtp2 = thermo.virtemp(pe2, tp2, tp2)
+        tdef1 = (vtp1 - te1) / thermo.ctok(te1)
+        tdef2 = (vtp2 - te2) / thermo.ctok(te2)
 
         ptraces[i-iter_ranges[0]] = pe2
-        ttraces[i-iter_ranges[0]] = thermo.virtemp(pe2, tp2, tp2)
+        ttraces[i-iter_ranges[0]] = vtp2
         lyrlast = lyre
         lyre = G * (tdef1 + tdef2) / 2. * (h2 - h1)
 
@@ -1935,7 +1879,7 @@ def parcelx(prof, pbot=None, ptop=None, dp=-1, **kwargs):
             if pe2 > 500.: totn += lyre
 
         # Check for Max LI
-        mli = thermo.virtemp(pe2, tp2, tp2) - te2
+        mli = vtp2 - te2
         if  mli > li_max:
             li_max = mli
             li_maxpres = pe2
@@ -1951,6 +1895,7 @@ def parcelx(prof, pbot=None, ptop=None, dp=-1, **kwargs):
         pe1 = pe2
         te1 = te2
         tp1 = tp2
+        vtp1 = vtp2
 
         # Is this the top of the specified layer
         if i >= uptr and not utils.QC(pcl.bplus):
@@ -2332,22 +2277,62 @@ def effective_inflow_layer(prof, ecape=100, ecinh=-250, **kwargs):
         if mucape >= ecape and mucinh > ecinh:
             pres_p, tmpc_p, hght_p, vtmp_p = prof.plain('pres'), prof.plain('tmpc'), prof.plain('hght'), prof.plain('vtmp')
             dwpc_p = prof.plain('dwpc')
-            # Begin at surface and search upward for effective surface
-            for i in range(prof.sfc, prof.top):
+
+            # Cached (logp, field) arrays for interpolation, computed
+            # ONCE for the whole scan rather than per candidate level --
+            # these are the exact same arrays interp.hght/interp.temp/
+            # interp.dwpt/interp.vtmp themselves interpolate against
+            # (see interp._valid_xy), so _fast.cape_only's internal
+            # interpolation is numerically identical to what the
+            # original per-level cape()->interp.X() calls would do.
+            logp_hght_v, hght_v = interp._valid_xy(prof, 'logp_hght', prof.logp[::-1], prof.hght[::-1])
+            logp_tmpc_v, tmpc_v = interp._valid_xy(prof, 'logp_tmpc', prof.logp[::-1], prof.tmpc[::-1])
+            logp_dwpc_v, dwpc_v = interp._valid_xy(prof, 'logp_dwpc', prof.logp[::-1], prof.dwpc[::-1])
+            logp_vtmp_v, vtmp_v = interp._valid_xy(prof, 'logp_vtmp', prof.logp[::-1], prof.vtmp[::-1])
+            logp_hght_v = np.asarray(logp_hght_v, dtype=np.float64)
+            hght_v = np.asarray(hght_v, dtype=np.float64)
+            logp_tmpc_v = np.asarray(logp_tmpc_v, dtype=np.float64)
+            tmpc_v = np.asarray(tmpc_v, dtype=np.float64)
+            logp_dwpc_v = np.asarray(logp_dwpc_v, dtype=np.float64)
+            dwpc_v = np.asarray(dwpc_v, dtype=np.float64)
+            logp_vtmp_v = np.asarray(logp_vtmp_v, dtype=np.float64)
+            vtmp_v = np.asarray(vtmp_v, dtype=np.float64)
+
+            _sfc_pres = float(prof.pres[prof.sfc])
+            _ptop_val = float(pres_p[pres_p.shape[0] - 1])
+
+            def _cape_only(p_i, t_i, d_i):
                 # cape()'s scalar thermo path assumes non-NaN input (it's
                 # numba-compiled with fastmath=True, which is only valid
-                # under a no-NaN assumption. feeding it NaN directly is
+                # under a no-NaN assumption, feeding it NaN directly is
                 # undefined behavior, not a graceful "skip", unlike
-                # ma.masked which routes through the original array-aware
-                # code and safely returns pcl with bplus/bminus masked).
-                # So: pass ma.masked here exactly where the original
-                # MaskedArray read would have been masked, instead of the
-                # plain (possibly-NaN) mirror value.
-                p_i = pres_p[i] if tmpc_p[i] == tmpc_p[i] else ma.masked
-                t_i = tmpc_p[i] if tmpc_p[i] == tmpc_p[i] else ma.masked
-                d_i = dwpc_p[i] if dwpc_p[i] == dwpc_p[i] else ma.masked
-                pcl = cape(prof, pres=p_i, tmpc=t_i, dwpc=d_i)
-                if pcl.bplus >= ecape and pcl.bminus > ecinh:
+                # ma.masked which routes through the original
+                # array-aware code and safely returns pcl with
+                # bplus/bminus masked). So: check for masked/NaN inputs
+                # here in Python and skip the compiled call entirely,
+                # returning NaN, `nan >= ecape`/`nan > ecinh` are both
+                # False, matching a masked comparison's always-False
+                # result without needing an explicit masked check at the
+                # call site.
+                if t_i != t_i or d_i != d_i:
+                    return np.nan, np.nan
+                # pbot/ptop match cape()'s own defaults (surface / last
+                # profile level) -- effective_inflow_layer never
+                # overrides either, same as the original code this
+                # replaces. Third return value (adjusted pbot) isn't
+                # needed here -- this caller only ever reads bplus/bminus.
+                bplus, bminus, _ = _fast.cape_only(
+                    float(p_i), float(t_i), float(d_i),
+                    _sfc_pres, _ptop_val, False,
+                    pres_p, tmpc_p, hght_p, vtmp_p,
+                    logp_hght_v, hght_v, logp_tmpc_v, tmpc_v,
+                    logp_dwpc_v, dwpc_v, logp_vtmp_v, vtmp_v)
+                return bplus, bminus
+
+            # Begin at surface and search upward for effective surface
+            for i in range(prof.sfc, prof.top):
+                bplus, bminus = _cape_only(pres_p[i], tmpc_p[i], dwpc_p[i])
+                if bplus >= ecape and bminus > ecinh:
                     pbot = pres_p[i]
                     break
 
@@ -2367,8 +2352,8 @@ def effective_inflow_layer(prof, ecape=100, ecinh=-250, **kwargs):
                 d, t = dwpc_p[i], tmpc_p[i]
                 if d == 0. or d != d or t == 0. or t != t:
                     continue
-                pcl = cape(prof, pres=pres_p[i], tmpc=tmpc_p[i], dwpc=dwpc_p[i])
-                if pcl.bplus < ecape or pcl.bminus <= ecinh: #Is this a potential "top"?
+                bplus, bminus = _cape_only(pres_p[i], tmpc_p[i], dwpc_p[i])
+                if bplus < ecape or bminus <= ecinh: #Is this a potential "top"?
                     j = 1
                     while not utils.QC(prof.dwpc[i-j]) and not utils.QC(prof.tmpc[i-j]):
                         j += 1
@@ -2472,19 +2457,47 @@ def convective_temp(prof, **kwargs):
     tmpc = kwargs.get('tmpc', prof.tmpc[prof.sfc])
     dwpc = kwargs.get('dwpc', thermo.temp_at_mixrat(mmr, pres))
 
+    pres_p, tmpc_p, hght_p, vtmp_p = prof.plain('pres'), prof.plain('tmpc'), prof.plain('hght'), prof.plain('vtmp')
+    logp_hght_v, hght_v = interp._valid_xy(prof, 'logp_hght', prof.logp[::-1], prof.hght[::-1])
+    logp_tmpc_v, tmpc_v = interp._valid_xy(prof, 'logp_tmpc', prof.logp[::-1], prof.tmpc[::-1])
+    logp_dwpc_v, dwpc_v = interp._valid_xy(prof, 'logp_dwpc', prof.logp[::-1], prof.dwpc[::-1])
+    logp_vtmp_v, vtmp_v = interp._valid_xy(prof, 'logp_vtmp', prof.logp[::-1], prof.vtmp[::-1])
+    logp_hght_v = np.asarray(logp_hght_v, dtype=np.float64)
+    hght_v = np.asarray(hght_v, dtype=np.float64)
+    logp_tmpc_v = np.asarray(logp_tmpc_v, dtype=np.float64)
+    tmpc_v = np.asarray(tmpc_v, dtype=np.float64)
+    logp_dwpc_v = np.asarray(logp_dwpc_v, dtype=np.float64)
+    dwpc_v = np.asarray(dwpc_v, dtype=np.float64)
+    logp_vtmp_v = np.asarray(logp_vtmp_v, dtype=np.float64)
+    vtmp_v = np.asarray(vtmp_v, dtype=np.float64)
+    _sfc_pres = float(prof.pres[prof.sfc])
+    _ptop_val = float(pres_p[pres_p.shape[0] - 1])
+
+    def _cape_only_trunc(t_test):
+        # See effective_inflow_layer's identical-in-spirit helper for why
+        # NaN in, NaN out here matches ma.masked's role in the original
+        # (utils.QC(masked) is False; nan != nan is True) without
+        # needing an explicit masked check at each call site.
+        bplus, bminus, _ = _fast.cape_only(
+            float(pres), float(t_test), float(dwpc), _sfc_pres, _ptop_val, True,
+            pres_p, tmpc_p, hght_p, vtmp_p,
+            logp_hght_v, hght_v, logp_tmpc_v, tmpc_v,
+            logp_dwpc_v, dwpc_v, logp_vtmp_v, vtmp_v)
+        return bplus, bminus
+
     # Do a quick search to fine whether to continue. If you need to heat
     # up more than 25C, don't compute.
-    pcl = cape(prof, flag=5, pres=pres, tmpc=tmpc+25., dwpc=dwpc, trunc=True)
-    if pcl.bplus == 0. or not utils.QC(pcl.bminus) or pcl.bminus < mincinh: return ma.masked
+    bplus, bminus = _cape_only_trunc(tmpc + 25.)
+    if bplus == 0. or bminus != bminus or bminus < mincinh: return ma.masked
     excess = dwpc - tmpc
     if excess > 0: tmpc = tmpc + excess + 4.
-    pcl = cape(prof, flag=5, pres=pres, tmpc=tmpc, dwpc=dwpc, trunc=True)
-    if pcl.bplus == 0. or not utils.QC(pcl.bminus): pcl.bminus = ma.masked
-    while not utils.QC(pcl.bminus) or pcl.bminus < mincinh:
-        if pcl.bminus < -100: tmpc += 2.
+    bplus, bminus = _cape_only_trunc(tmpc)
+    if bplus == 0. or bminus != bminus: bminus = float('nan')
+    while bminus != bminus or bminus < mincinh:
+        if bminus < -100: tmpc += 2.
         else: tmpc += 0.5
-        pcl = cape(prof, flag=5, pres=pres, tmpc=tmpc, dwpc=dwpc, trunc=True)
-        if pcl.bplus == 0.: pcl.bminus = ma.masked
+        bplus, bminus = _cape_only_trunc(tmpc)
+        if bplus == 0.: bminus = float('nan')
     return tmpc
 
 def tei(prof):
@@ -2892,14 +2905,17 @@ def dcape(prof):
     tmpc = np.asarray(prof.tmpc[~mask])
     idx = np.where(pres >= sfc_pres - 400.)[0]
 
-    # Find the minimum average theta-e in a 100 mb layer
-    mine = 1000.0
-    minp = -999.0
-    for i in idx:
-        thta_e_mean = mean_thetae(prof, pbot=pres[i], ptop=pres[i]-100.)
-        if utils.QC(thta_e_mean) and thta_e_mean < mine:
-            minp = pres[i] - 50.
-            mine = thta_e_mean
+    # Find the minimum average theta-e in a 100 mb layer. Compiled: see
+    # fast_thermo.dcape_min_mean_thetae_loop's docstring for why the old
+    # `for i in idx: mean_thetae(...)` loop (profiled: several seconds on
+    # a dense sounding) was almost entirely per-call MaskedArray/np.arange
+    # overhead rather than the interpolation math itself.
+    logp_valid, thetae_valid = interp._valid_xy(
+        prof, 'logp_thetae', prof.logp[::-1], prof.thetae[::-1])
+    mine, minp = _fast.dcape_min_mean_thetae_loop(
+        np.asarray(pres[idx], dtype=np.float64),
+        np.asarray(logp_valid, dtype=np.float64),
+        np.asarray(thetae_valid, dtype=np.float64))
 
     upper = minp
     uptr = np.where(pres >= upper)[0]
@@ -2921,7 +2937,8 @@ def dcape(prof):
     thetam_dc = thta_dc - thermo.wobf(thta_dc) + thermo.wobf(tp1)
     tp_precomputed_dc = np.full(pres.shape[0], np.nan, dtype=np.float64)
     target_pres_dc = pres[0:uptr+1]
-    tp_precomputed_dc[0:uptr+1] = thermo.satlift(target_pres_dc, np.full_like(target_pres_dc, thetam_dc))
+    tp_precomputed_dc[0:uptr+1] = _fast.satlift_array_loop(
+        target_pres_dc.astype(np.float64), np.full_like(target_pres_dc, thetam_dc, dtype=np.float64))
 
     # To keep track of the parcel trace from the downdraft
     ttrace = [tp1]

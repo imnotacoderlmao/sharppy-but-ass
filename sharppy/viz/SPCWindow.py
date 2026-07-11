@@ -240,8 +240,7 @@ class SPCWidget(QWidget):
     def savetext(self):
         logging.debug("Save the data to the disk.")
         path = self.config['paths', 'save_txt']
-        file_types = "TXT (*.txt)"
-        file_name, result = QFileDialog.getSaveFileName(self, "Save Sounding Text", path, file_types)
+        file_name, result = QFileDialog.getSaveFileName(self, "Save Sounding Text", path)
         if result:
             self.default_prof.toFile(file_name)
             self.config['paths', 'save_txt'] = os.path.dirname(file_name)
@@ -286,6 +285,8 @@ class SPCWidget(QWidget):
         self.sound.reset.connect(self.resetProfModifications)
         self.sound.cursor_toggle.connect(self.hodo.cursorToggle)
         self.sound.cursor_move.connect(self.hodo.cursorMove)
+        self.speed_vs_height.setSkewT(self.sound)
+        self.sound.view_changed.connect(self.speed_vs_height.setScale)
 
         self.hodo.modified.connect(self.modifyProf)
         self.hodo.modified_vector.connect(self.modifyVector)

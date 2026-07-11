@@ -59,7 +59,7 @@ def _valid_xy(prof, key, x, y):
     return entry
 
 
-def _interp_cached(prof, key, query, x, y, log_query=False, log_result=False):
+def _interp_cached(prof, key, query, x, y, log_query=False, log_result=False, raw=False):
     '''
     Cached counterpart to generic_interp_pres for the fixed, profile-bound
     (x, y) pairs used by the wrapper functions below (pres/hght/temp/dwpt/
@@ -73,11 +73,24 @@ def _interp_cached(prof, key, query, x, y, log_query=False, log_result=False):
     MaskedArray construction, no ma.where, no ma.log10 -- those turned out
     (by profiling) to be a bigger cost than the interpolation itself.
     The array-query path (rare from these wrappers, but still supported)
-    falls back to the original masked-array-returning behavior.
+    falls back to the original masked-array-returning behavior, unless
+    raw=True.
+
+    raw=True (array queries only): skip the masked-array wrap and return
+    a plain NaN-filled ndarray directly. For callers that immediately do
+    `ma.filled(interp.X(prof, p), np.nan)` anyway (e.g. cape()'s
+    boundary-layer mixing calc -- profiled: this hit on every single
+    cape() call, i.e. once per level scanned by effective_inflow_layer()),
+    the normal path's ma.masked_where(np.isnan(...)) is *strictly*
+    undone one line later, paying full MaskedArray construction
+    (__array_finalize__/_update_from) for a round trip back to the exact
+    NaN values it started from.
     '''
     x_valid, y_valid = _valid_xy(prof, key, x, y)
 
     if x_valid.shape[0] == 0 or y_valid.shape[0] == 0:
+        if raw:
+            return np.full(np.shape(query), np.nan, dtype=np.float64)
         return ma.masked_where(ma.ones(np.shape(query)), query)
 
     is_array_query = np.ndim(query) != 0
@@ -106,6 +119,10 @@ def _interp_cached(prof, key, query, x, y, log_query=False, log_result=False):
     else:
         q = query
     field_intrp = np.interp(q, x_valid, y_valid, left=np.nan, right=np.nan)
+    if raw:
+        if log_result:
+            field_intrp = 10. ** field_intrp
+        return field_intrp
     field_intrp = ma.masked_where(np.isnan(field_intrp), field_intrp)
     if log_result:
         field_intrp = 10 ** field_intrp
@@ -132,7 +149,7 @@ def pres(prof, h):
     return _interp_cached(prof, 'hght_logp', h, prof.hght, prof.logp, log_result=True)
 
 
-def hght(prof, p):
+def hght(prof, p, raw=False):
     '''
     Interpolates the given data to calculate a height at a given pressure
 
@@ -142,6 +159,11 @@ def hght(prof, p):
         Profile object
     p : number, numpy array
         Pressure (hPa) of the level for which height is desired
+    raw : bool (optional; default False)
+        Array queries only: return a plain NaN-filled ndarray instead of
+        a MaskedArray (see _interp_cached's raw= docstring). Skip this
+        unless you're about to do `ma.filled(..., np.nan)` immediately
+        anyway.
 
     Returns
     -------
@@ -152,7 +174,7 @@ def hght(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return _interp_cached(prof, 'logp_hght', p, prof.logp[::-1], prof.hght[::-1], log_query=True)
+    return _interp_cached(prof, 'logp_hght', p, prof.logp[::-1], prof.hght[::-1], log_query=True, raw=raw)
 
 def omeg(prof, p):
     '''
@@ -164,6 +186,9 @@ def omeg(prof, p):
         Profile object
     p : number, numpy array
         Pressure (hPa) of the level for which temperature is desired
+    raw : bool (optional; default False)
+        Array queries only: return a plain NaN-filled ndarray instead of
+        a MaskedArray (see _interp_cached's raw= docstring).
 
     Returns
     -------
@@ -176,7 +201,7 @@ def omeg(prof, p):
     # this requirement.
     return _interp_cached(prof, 'logp_omeg', p, prof.logp[::-1], prof.omeg[::-1], log_query=True)
 
-def temp(prof, p):
+def temp(prof, p, raw=False):
     '''
     Interpolates the given data to calculate a temperature at a given pressure
 
@@ -186,6 +211,9 @@ def temp(prof, p):
         Profile object
     p : number, numpy array
         Pressure (hPa) of the level for which temperature is desired
+    raw : bool (optional; default False)
+        Array queries only: return a plain NaN-filled ndarray instead of
+        a MaskedArray (see _interp_cached's raw= docstring).
 
     Returns
     -------
@@ -196,7 +224,7 @@ def temp(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return _interp_cached(prof, 'logp_tmpc', p, prof.logp[::-1], prof.tmpc[::-1], log_query=True)
+    return _interp_cached(prof, 'logp_tmpc', p, prof.logp[::-1], prof.tmpc[::-1], log_query=True, raw=raw)
 
 def thetae(prof, p):
     '''
@@ -287,7 +315,7 @@ def wetbulb(prof, p):
     # this requirement.
     return _interp_cached(prof, 'logp_wetbulb', p, prof.logp[::-1], prof.wetbulb[::-1], log_query=True)
 
-def dwpt(prof, p):
+def dwpt(prof, p, raw=False):
     '''
     Interpolates the given data to calculate a dew point temperature
     at a given pressure
@@ -298,6 +326,9 @@ def dwpt(prof, p):
         Profile object
     p : number, numpy array
         Pressure (hPa) of the level for which dew point temperature is desired
+    raw : bool (optional; default False)
+        Array queries only: return a plain NaN-filled ndarray instead of
+        a MaskedArray (see _interp_cached's raw= docstring).
 
     Returns
     -------
@@ -308,7 +339,7 @@ def dwpt(prof, p):
     # routine to be in ascending order. Because pressure decreases in the
     # vertical, we must reverse the order of the two arrays to satisfy
     # this requirement.
-    return _interp_cached(prof, 'logp_dwpc', p, prof.logp[::-1], prof.dwpc[::-1], log_query=True)
+    return _interp_cached(prof, 'logp_dwpc', p, prof.logp[::-1], prof.dwpc[::-1], log_query=True, raw=raw)
 
 
 def vtmp(prof, p):
@@ -379,6 +410,28 @@ def vec(prof, p):
     return utils.comp2vec(U, V)
 
 
+def _sfc_hght(prof):
+    '''
+    prof.hght[prof.sfc] never changes for a given Profile instance (a
+    "changed" sounding is a new Profile object -- see prof_collection.py,
+    same invariant _valid_xy above relies on), but to_agl()/to_msl() are
+    called from inside params.parcelx()'s per-level main loop (every
+    iteration, to check for a 3km/6km AGL crossing) -- profiled at
+    ~140,000 calls building a single sounding's parcels, each paying a
+    MaskedArray.__getitem__ (mask/_update_from/__array_finalize__
+    machinery) just to read the same scalar every time. Cache it as a
+    plain float once per Profile instance instead.
+    '''
+    cached = prof.__dict__.get('_sfc_hght_cache')
+    if cached is None:
+        cached = float(prof.hght[prof.sfc])
+        try:
+            prof._sfc_hght_cache = cached
+        except Exception:
+            pass
+    return cached
+
+
 def to_agl(prof, h):
     '''
     Convert a height from mean sea-level (MSL) to above ground-level (AGL)
@@ -395,7 +448,7 @@ def to_agl(prof, h):
     Converted height (m AGL) : number, numpy array
 
     '''
-    return h - prof.hght[prof.sfc]
+    return h - _sfc_hght(prof)
 
 
 def to_msl(prof, h):
@@ -414,7 +467,7 @@ def to_msl(prof, h):
     Converted height (m MSL) : number, numpy array
 
     '''
-    return h + prof.hght[prof.sfc]
+    return h + _sfc_hght(prof)
 
 
 def generic_interp_hght(h, hght, field, log=False):
